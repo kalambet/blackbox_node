@@ -93,6 +93,15 @@ const CURATED_MODELS = [
     notes: "Tier XL | about 2.1 GB | strongest practical general chat model in this compact catalog.",
   },
   {
+    id: "qwen35-4b-q4km",
+    name: "Qwen3.5 4B Q4_K_M",
+    filename: "Qwen3.5-4B-Q4_K_M.gguf",
+    url: "https://huggingface.co/lmstudio-community/Qwen3.5-4B-GGUF/resolve/main/Qwen3.5-4B-Q4_K_M.gguf?download=true",
+    sizeBytes: 2910000000,
+    family: "Pi Chat",
+    notes: "Tier XL+ | about 2.7 GB | modern Qwen3.5 in a compact size, good balance for general chat.",
+  },
+  {
     id: "qwen25-coder-05b-q4km",
     name: "Qwen2.5 Coder 0.5B Instruct Q4_K_M",
     filename: "Qwen2.5-Coder-0.5B-Instruct-Q4_K_M.gguf",
@@ -163,6 +172,15 @@ const CURATED_MODELS = [
     sizeBytes: 4911500096,
     family: "Mistral",
     notes: "Tier M2 | about 4.9 GB | newer Mistral-family instruct model with a good quality-to-size tradeoff.",
+  },
+  {
+    id: "qwen35-9b-q4km",
+    name: "Qwen3.5 9B Q4_K_M",
+    filename: "Qwen3.5-9B-Q4_K_M.gguf",
+    url: "https://huggingface.co/lmstudio-community/Qwen3.5-9B-GGUF/resolve/main/Qwen3.5-9B-Q4_K_M.gguf?download=true",
+    sizeBytes: 6045000000,
+    family: "Pi Chat",
+    notes: "Tier XXXL | about 5.6 GB | Qwen3.5 9B, strongest Pi Chat option for desktop-class hardware.",
   },
 ];
 const HISTORY_LIMIT = 8;
@@ -3770,7 +3788,7 @@ function buildPythonEnv(includeSelectedPort = true) {
     ...process.env,
     PYTHONIOENCODING: "utf-8",
     PYTHONUTF8: "1",
-    PYTHONPATH: process.env.PYTHONPATH ? `${PYDEPS_DIR};${process.env.PYTHONPATH}` : PYDEPS_DIR,
+    PYTHONPATH: process.env.PYTHONPATH ? `${PYDEPS_DIR}${path.delimiter}${process.env.PYTHONPATH}` : PYDEPS_DIR,
   };
   const selectedPort = getConfiguredMeshtasticPort();
   if (includeSelectedPort && selectedPort) {
@@ -3784,6 +3802,7 @@ function buildPythonEnv(includeSelectedPort = true) {
 function findPythonLauncher() {
   const candidates = [
     ["C:\\Python311\\python.exe", ["--version"]],
+    ["python3", ["--version"]],
     ["python", ["--version"]],
     ["py", ["--version"]],
   ];

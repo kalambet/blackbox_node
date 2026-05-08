@@ -234,6 +234,7 @@ const deviceMetaTakHopLimit = document.getElementById("deviceMetaTakHopLimit");
 const deviceMetaModemPreset = document.getElementById("deviceMetaModemPreset");
 const deviceMetaStatus = document.getElementById("deviceMetaStatus");
 const deviceMetaSave = document.getElementById("deviceMetaSave");
+const deviceMetaLocate = document.getElementById("deviceMetaLocate");
 const chatChannelModal = document.getElementById("chatChannelModal");
 const chatChannelModalClose = document.getElementById("chatChannelModalClose");
 const chatChannelModalForm = document.getElementById("chatChannelModalForm");
@@ -6853,6 +6854,28 @@ if (chatChannelModalForm) {
     }
   });
 }
+deviceMetaLocate.addEventListener("click", () => {
+  if (!navigator.geolocation) {
+    deviceMetaStatus.textContent = "Geolocation is not supported by this browser.";
+    return;
+  }
+  deviceMetaStatus.textContent = "Locating...";
+  deviceMetaLocate.disabled = true;
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      deviceMetaLat.value = pos.coords.latitude.toFixed(6);
+      deviceMetaLon.value = pos.coords.longitude.toFixed(6);
+      const accuracy = Math.round(pos.coords.accuracy || 0);
+      deviceMetaStatus.textContent = accuracy > 0 ? `Located (±${accuracy} m).` : "Located.";
+      deviceMetaLocate.disabled = false;
+    },
+    (err) => {
+      deviceMetaStatus.textContent = `Location error: ${err.message}`;
+      deviceMetaLocate.disabled = false;
+    },
+    { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
+  );
+});
 deviceMetaSave.addEventListener("click", () => {
   deviceMetaStatus.textContent = "Saving...";
   deviceMetaSave.disabled = true;

@@ -282,6 +282,7 @@ async function ensureStarterModel() {
 function findPythonLauncher() {
   const candidates = [
     ["C:\\Python311\\python.exe", ["--version"]],
+    ["python3", ["--version"]],
     ["python", ["--version"]],
     ["py", ["--version"]],
   ];

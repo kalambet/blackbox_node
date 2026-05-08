@@ -1155,7 +1155,7 @@ def main() -> int:
                     lat = payload.get("latitude")
                     lon = payload.get("longitude")
                     if lat is not None and lon is not None:
-                        mesh_interface.localNode.setPosition(float(lat), float(lon), 0)
+                        mesh_interface.localNode.setFixedPosition(float(lat), float(lon), 0)
                     modem_preset = str(payload.get("modemPreset") or "").strip().upper()
                     if modem_preset:
                         local_node = mesh_interface.localNode
