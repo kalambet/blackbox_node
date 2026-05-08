@@ -381,6 +381,31 @@ function setConfiguredMeshtasticPort(port) {
   persistSettings();
 }
 
+function isWalletExternalClientsEnabled() {
+  return Boolean(appSettings.walletExternalClientsEnabled);
+}
+
+function getWalletExternalClients() {
+  return Array.isArray(appSettings.walletExternalClients) ? appSettings.walletExternalClients : [];
+}
+
+function addWalletExternalClient(nodeId) {
+  const id = String(nodeId || "").trim();
+  if (!id) throw new Error("nodeId required");
+  const current = getWalletExternalClients();
+  if (current.includes(id)) return current;
+  appSettings.walletExternalClients = [...current, id];
+  persistSettings();
+  return appSettings.walletExternalClients;
+}
+
+function removeWalletExternalClient(nodeId) {
+  const id = String(nodeId || "").trim();
+  appSettings.walletExternalClients = getWalletExternalClients().filter((n) => n !== id);
+  persistSettings();
+  return appSettings.walletExternalClients;
+}
+
 function getMeshtasticStatusPayload(overrides = {}) {
   return {
     ...meshtasticStatus,
@@ -3048,6 +3073,10 @@ function mergeBridgeNodes(nodes) {
       hardware: bridgeNode.hardware || existing.hardware || "",
       meshtasticRole: bridgeNode.meshtasticRole || existing.meshtasticRole || "",
       modemPreset: bridgeNode.modemPreset || existing.modemPreset || "",
+      meshHopLimit: bridgeNode.meshHopLimit ?? existing.meshHopLimit ?? null,
+      region: bridgeNode.region || existing.region || "UNSET",
+      txPower: bridgeNode.txPower ?? existing.txPower ?? null,
+      nodeRole: bridgeNode.nodeRole || existing.nodeRole || "CLIENT",
       lastHeard: bridgeNode.lastHeard || existing.lastHeard || null,
       snr: bridgeNode.snr ?? existing.snr ?? null,
       hopsAway: bridgeNode.hopsAway ?? existing.hopsAway ?? null,
@@ -4717,6 +4746,65 @@ function normalizePrompt(text) {
   return trimmed;
 }
 
+function isApprovedWalletClient(nodeId) {
+  return isWalletExternalClientsEnabled() && getWalletExternalClients().includes(String(nodeId || ""));
+}
+
+async function handleWalletCommand(sender, text) {
+  if (text === "/wallet") {
+    const balance = getCashuBalance();
+    const packets = getCashuOffgridPackets();
+    const proofList = packets.length
+      ? packets.map((p) => `[${p.amount}]`).join("")
+      : "none";
+    const reply = `💰 ${balance} sats\nProofs: ${proofList}\nsend <amt> <node>`;
+    await sendMeshReply(sender, reply);
+    return true;
+  }
+
+  const sendMatch = text.match(/^send\s+(\d+)\s+(\S+)$/i);
+  if (sendMatch) {
+    const amount = parseInt(sendMatch[1], 10);
+    const targetName = sendMatch[2].toLowerCase();
+
+    const targetNode = Object.values(knownNodes).find(
+      (n) => (n.shortName || "").toLowerCase() === targetName
+    );
+    if (!targetNode) {
+      await sendMeshReply(sender, `✗ Node "${targetName}" not found`);
+      return true;
+    }
+
+    const packets = getCashuOffgridPackets();
+    const hasPacket = packets.some((p) => p.amount === amount);
+    if (!hasPacket) {
+      await sendMeshReply(sender, `✗ No prepared proof for ${amount} sats`);
+      return true;
+    }
+
+    try {
+      const result = await withCashuLock(() => cashuSendToken(amount, { exactOfflineOnly: true }));
+      const targetId = targetNode.userId || targetNode.id;
+      await sendMeshReply(targetId, result.token, "local-wallet");
+      addCashuHistory({
+        direction: "Sent",
+        amount,
+        unit: "sats",
+        peer: getNodeDisplayName(targetNode),
+        status: "Token created (off-grid)",
+      });
+      persistActiveCashu();
+      broadcast("cashu", getCashuPayload());
+      await sendMeshReply(sender, `✓ Sent ${amount} sats to ${targetName}`);
+    } catch (err) {
+      await sendMeshReply(sender, `✗ Error: ${err.message}`);
+    }
+    return true;
+  }
+
+  return false;
+}
+
 async function handleInboundMesh(payload) {
   const repairedText = repairText(payload.text);
   updateKnownNode(payload.sender, repairedText);
@@ -4735,6 +4823,11 @@ async function handleInboundMesh(payload) {
 
   if (!isDirectMessage) {
     return;
+  }
+
+  if (isApprovedWalletClient(payload.sender)) {
+    const handled = await handleWalletCommand(payload.sender, String(repairedText || "").trim());
+    if (handled) return;
   }
 
   if (!isMeshAiReplyEnabled()) {
@@ -5477,6 +5570,10 @@ const server = http.createServer(async (req, res) => {
         latitude: localNode?.latitude ?? null,
         longitude: localNode?.longitude ?? null,
         modemPreset: localNode?.modemPreset || "LONG_FAST",
+        meshHopLimit: localNode?.meshHopLimit ?? null,
+        region: localNode?.region || "UNSET",
+        txPower: localNode?.txPower ?? null,
+        nodeRole: localNode?.nodeRole || "CLIENT",
         takChannel: getConfiguredTakChannel(),
         takHopLimit: getConfiguredTakHopLimit(),
         nodeOnlineWindowMinutes: getConfiguredNodeOnlineWindowMinutes(),
@@ -5504,6 +5601,18 @@ const server = http.createServer(async (req, res) => {
         }
         broadcast("nodes", getNodesPayload());
         broadcast("status", { meshtastic: getMeshtasticStatusPayload() });
+        return sendJson(res, 200, { ok: true });
+      } catch (e) {
+        return sendJson(res, 503, { error: e.message });
+      }
+    }
+
+    if (req.method === "POST" && req.url === "/api/reset-node-db") {
+      try {
+        sendBridge({ type: "reset_node_db", payload: {} });
+        knownNodes = {};
+        persistNodes();
+        broadcast("nodes", getNodesPayload());
         return sendJson(res, 200, { ok: true });
       } catch (e) {
         return sendJson(res, 503, { error: e.message });
@@ -5956,6 +6065,34 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "GET" && req.url === "/api/wallet") {
       return sendJson(res, 200, getWalletPayload());
+    }
+
+    // ── Wallet external clients endpoints ───────────────────────────────────
+    if (req.method === "GET" && req.url === "/api/wallet-clients") {
+      return sendJson(res, 200, { enabled: isWalletExternalClientsEnabled(), clients: getWalletExternalClients() });
+    }
+
+    if (req.method === "POST" && req.url === "/api/wallet-clients/enabled") {
+      const body = await readJson(req);
+      appSettings.walletExternalClientsEnabled = Boolean(body.enabled);
+      persistSettings();
+      return sendJson(res, 200, { ok: true, enabled: appSettings.walletExternalClientsEnabled });
+    }
+
+    if (req.method === "POST" && req.url === "/api/wallet-clients/add") {
+      const body = await readJson(req);
+      try {
+        const clients = addWalletExternalClient(body.nodeId);
+        return sendJson(res, 200, { ok: true, clients });
+      } catch (e) {
+        return sendJson(res, 400, { error: e.message });
+      }
+    }
+
+    if (req.method === "POST" && req.url === "/api/wallet-clients/remove") {
+      const body = await readJson(req);
+      const clients = removeWalletExternalClient(body.nodeId);
+      return sendJson(res, 200, { ok: true, clients });
     }
 
     // ── Swap endpoints ──────────────────────────────────────────────────────

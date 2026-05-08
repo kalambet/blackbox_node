@@ -232,8 +232,13 @@ const deviceMetaLon = document.getElementById("deviceMetaLon");
 const deviceMetaTakChannel = document.getElementById("deviceMetaTakChannel");
 const deviceMetaTakHopLimit = document.getElementById("deviceMetaTakHopLimit");
 const deviceMetaModemPreset = document.getElementById("deviceMetaModemPreset");
+const deviceMetaMeshHopLimit = document.getElementById("deviceMetaMeshHopLimit");
+const deviceMetaRegion = document.getElementById("deviceMetaRegion");
+const deviceMetaTxPower = document.getElementById("deviceMetaTxPower");
+const deviceMetaNodeRole = document.getElementById("deviceMetaNodeRole");
 const deviceMetaStatus = document.getElementById("deviceMetaStatus");
 const deviceMetaSave = document.getElementById("deviceMetaSave");
+const deviceResetNodeDb = document.getElementById("deviceResetNodeDb");
 const deviceConnectModal = document.getElementById("deviceConnectModal");
 const deviceConnectClose = document.getElementById("deviceConnectClose");
 const deviceConnectPortSelect = document.getElementById("deviceConnectPortSelect");
@@ -1029,7 +1034,7 @@ function isPeerDmMessage(message, peerId) {
   if (direction === "in") {
     return isDirectMessage && sender === peerId;
   }
-  return recipient === peerId && sender === "local-ui";
+  return recipient === peerId && (sender === "local-ui" || sender === "local-wallet");
 }
 
 function isChannelThreadMessage(message, channelIndex) {
@@ -1888,6 +1893,10 @@ function openDeviceMetaModal() {
   if (deviceMetaTakChannel) deviceMetaTakChannel.value = "";
   if (deviceMetaTakHopLimit) deviceMetaTakHopLimit.value = "";
   if (deviceMetaModemPreset) deviceMetaModemPreset.value = "LONG_FAST";
+  if (deviceMetaMeshHopLimit) deviceMetaMeshHopLimit.value = "";
+  if (deviceMetaRegion) deviceMetaRegion.value = "UNSET";
+  if (deviceMetaTxPower) deviceMetaTxPower.value = "";
+  if (deviceMetaNodeRole) deviceMetaNodeRole.value = "CLIENT";
   fetchJson("/api/device-meta").then((data) => {
     deviceMetaShortName.value = data.shortName || "";
     deviceMetaLongName.value = data.longName || "";
@@ -1896,6 +1905,10 @@ function openDeviceMetaModal() {
     if (deviceMetaTakChannel) deviceMetaTakChannel.value = data.takChannel != null ? data.takChannel : 0;
     if (deviceMetaTakHopLimit) deviceMetaTakHopLimit.value = data.takHopLimit != null ? data.takHopLimit : 3;
     if (deviceMetaModemPreset) deviceMetaModemPreset.value = data.modemPreset || "LONG_FAST";
+    if (deviceMetaMeshHopLimit) deviceMetaMeshHopLimit.value = data.meshHopLimit != null ? data.meshHopLimit : "";
+    if (deviceMetaRegion) deviceMetaRegion.value = data.region || "UNSET";
+    if (deviceMetaTxPower) deviceMetaTxPower.value = data.txPower != null ? data.txPower : "";
+    if (deviceMetaNodeRole) deviceMetaNodeRole.value = data.nodeRole || "CLIENT";
     deviceMetaStatus.textContent = "";
   }).catch((err) => {
     deviceMetaStatus.textContent = `Load error: ${err.message}`;
@@ -2633,6 +2646,9 @@ function setWalletView(viewName, options = {}) {
   if (viewName === "receive" && walletState.walletConfigured) {
     loadWalletQr();
   }
+  if (viewName === "settings") {
+    loadWalletClients();
+  }
 }
 
 
@@ -2727,6 +2743,7 @@ function renderNodes(nodes = [], meshLinks = []) {
     ? `<span class="nodes-online-dot"></span>${onlineCount}`
     : "";
   syncNodeSelectors();
+  syncWalletClientNodeSelect();
   nodesList.innerHTML = "";
   if (!nodes.length) {
     nodesList.innerHTML = '<div class="node-empty">No nodes yet</div>';
@@ -6440,6 +6457,106 @@ if (clearSwapsButton) {
 }
 
 // Settings mint button Р Р†Р вЂљРІР‚Сњ same API as Fund panel
+// External wallet clients
+const walletExternalClientsToggle = document.getElementById("walletExternalClientsToggle");
+const walletExternalClientsCard = document.getElementById("walletExternalClientsCard");
+const walletClientNodeSelect = document.getElementById("walletClientNodeSelect");
+const walletClientAddButton = document.getElementById("walletClientAddButton");
+const walletClientList = document.getElementById("walletClientList");
+const walletClientStatus = document.getElementById("walletClientStatus");
+
+let walletClients = [];
+let walletClientsEnabled = false;
+
+function renderWalletClients() {
+  if (!walletClientList) return;
+  walletClientList.innerHTML = "";
+  if (!walletClients.length) {
+    walletClientList.innerHTML = '<div class="wallet-hint">No approved clients.</div>';
+    return;
+  }
+  walletClients.forEach((nodeId) => {
+    const node = latestNodes.find((n) => (n.userId || n.id) === nodeId);
+    const label = node
+      ? `${node.shortName || node.longName || nodeId} (${nodeId})`
+      : nodeId;
+    const row = document.createElement("div");
+    row.className = "wallet-client-row";
+    row.innerHTML = `<span class="wallet-client-label">${label}</span><button type="button" class="wallet-inline-action wallet-client-remove" data-id="${nodeId}">Remove</button>`;
+    row.querySelector(".wallet-client-remove").addEventListener("click", async () => {
+      try {
+        const data = await fetchJson("/api/wallet-clients/remove", { method: "POST", body: JSON.stringify({ nodeId }) });
+        walletClients = data.clients;
+        renderWalletClients();
+      } catch (e) {
+        if (walletClientStatus) walletClientStatus.textContent = e.message;
+      }
+    });
+    walletClientList.appendChild(row);
+  });
+}
+
+function syncWalletClientNodeSelect() {
+  if (!walletClientNodeSelect) return;
+  const current = walletClientNodeSelect.value;
+  walletClientNodeSelect.innerHTML = '<option value="">Select a node...</option>';
+  latestNodes.forEach((n) => {
+    const id = n.userId || n.id;
+    if (!id || walletClients.includes(id)) return;
+    const label = `${n.shortName || n.longName || id} (${id})`;
+    const opt = document.createElement("option");
+    opt.value = id;
+    opt.textContent = label;
+    walletClientNodeSelect.appendChild(opt);
+  });
+  if (current) walletClientNodeSelect.value = current;
+}
+
+function applyWalletClientsEnabled() {
+  if (walletExternalClientsToggle) walletExternalClientsToggle.checked = walletClientsEnabled;
+  if (walletExternalClientsCard) walletExternalClientsCard.hidden = !walletClientsEnabled;
+}
+
+async function loadWalletClients() {
+  try {
+    const data = await fetchJson("/api/wallet-clients");
+    walletClients = data.clients || [];
+    walletClientsEnabled = Boolean(data.enabled);
+    applyWalletClientsEnabled();
+    renderWalletClients();
+    syncWalletClientNodeSelect();
+  } catch { /* ignore */ }
+}
+
+if (walletExternalClientsToggle) {
+  walletExternalClientsToggle.addEventListener("change", async () => {
+    const enabled = walletExternalClientsToggle.checked;
+    try {
+      await fetchJson("/api/wallet-clients/enabled", { method: "POST", body: JSON.stringify({ enabled }) });
+      walletClientsEnabled = enabled;
+      applyWalletClientsEnabled();
+    } catch (e) {
+      walletExternalClientsToggle.checked = !enabled;
+    }
+  });
+}
+
+if (walletClientAddButton) {
+  walletClientAddButton.addEventListener("click", async () => {
+    const nodeId = walletClientNodeSelect?.value;
+    if (!nodeId) { if (walletClientStatus) walletClientStatus.textContent = "Select a node first."; return; }
+    try {
+      const data = await fetchJson("/api/wallet-clients/add", { method: "POST", body: JSON.stringify({ nodeId }) });
+      walletClients = data.clients;
+      renderWalletClients();
+      syncWalletClientNodeSelect();
+      if (walletClientStatus) walletClientStatus.textContent = "";
+    } catch (e) {
+      if (walletClientStatus) walletClientStatus.textContent = e.message;
+    }
+  });
+}
+
 if (settingsSetMintButton) {
   settingsSetMintButton.addEventListener("click", async () => {
     const url = (settingsMintUrlInput?.value || "").trim();
@@ -7020,6 +7137,18 @@ deviceMetaSave.addEventListener("click", () => {
   if (deviceMetaModemPreset && deviceMetaModemPreset.value.trim() !== "") {
     payload.modemPreset = deviceMetaModemPreset.value.trim();
   }
+  if (deviceMetaMeshHopLimit && deviceMetaMeshHopLimit.value.trim() !== "") {
+    payload.meshHopLimit = parseInt(deviceMetaMeshHopLimit.value, 10);
+  }
+  if (deviceMetaRegion && deviceMetaRegion.value.trim() !== "") {
+    payload.region = deviceMetaRegion.value.trim();
+  }
+  if (deviceMetaTxPower && deviceMetaTxPower.value.trim() !== "") {
+    payload.txPower = parseInt(deviceMetaTxPower.value, 10);
+  }
+  if (deviceMetaNodeRole && deviceMetaNodeRole.value.trim() !== "") {
+    payload.nodeRole = deviceMetaNodeRole.value.trim();
+  }
   fetchJson("/api/device-meta", { method: "POST", body: JSON.stringify(payload) }).then(() => {
     deviceMetaStatus.textContent = "Saved.";
   }).catch((err) => {
@@ -7028,6 +7157,19 @@ deviceMetaSave.addEventListener("click", () => {
     deviceMetaSave.disabled = false;
   });
 });
+if (deviceResetNodeDb) {
+  deviceResetNodeDb.addEventListener("click", () => {
+    deviceMetaStatus.textContent = "Resetting node DB...";
+    deviceResetNodeDb.disabled = true;
+    fetchJson("/api/reset-node-db", { method: "POST" }).then(() => {
+      deviceMetaStatus.textContent = "Node DB reset.";
+    }).catch((err) => {
+      deviceMetaStatus.textContent = `Error: ${err.message}`;
+    }).finally(() => {
+      deviceResetNodeDb.disabled = false;
+    });
+  });
+}
 modelManagerModal.addEventListener("click", (event) => {
   if (event.target.hasAttribute("data-close-model-manager")) {
     closeModelManager();
@@ -7290,6 +7432,7 @@ loadStatus();
 loadMessages();
 loadLogs();
 loadNodes();
+loadWalletClients();
 connectEvents();
 
 if ("serviceWorker" in navigator) {
