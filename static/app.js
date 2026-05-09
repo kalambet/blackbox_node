@@ -29,6 +29,8 @@ const chatPeerDropdown = document.getElementById("chatPeerDropdown");
 const chatPeerTrigger = document.getElementById("chatPeerTrigger");
 const chatPeerLabel = document.getElementById("chatPeerLabel");
 const chatPeerCashuButton = document.getElementById("chatPeerCashuButton");
+const chatPeerLocateButton = document.getElementById("chatPeerLocateButton");
+const chatPeerInfoButton = document.getElementById("chatPeerInfoButton");
 const chatPeerFilterButtons = Array.from(document.querySelectorAll("[data-chat-peer-filter]"));
 const chatChannelRow = document.getElementById("chatChannelRow");
 const chatChannelSelect = document.getElementById("chatChannelSelect");
@@ -239,6 +241,10 @@ const deviceMetaNodeRole = document.getElementById("deviceMetaNodeRole");
 const deviceMetaStatus = document.getElementById("deviceMetaStatus");
 const deviceMetaSave = document.getElementById("deviceMetaSave");
 const deviceResetNodeDb = document.getElementById("deviceResetNodeDb");
+const deviceMetaPortSelect = document.getElementById("deviceMetaPortSelect");
+const deviceMetaPortRefresh = document.getElementById("deviceMetaPortRefresh");
+const deviceMetaPortConnect = document.getElementById("deviceMetaPortConnect");
+const deviceMetaPortStatus = document.getElementById("deviceMetaPortStatus");
 const deviceConnectModal = document.getElementById("deviceConnectModal");
 const deviceConnectClose = document.getElementById("deviceConnectClose");
 const deviceConnectPortSelect = document.getElementById("deviceConnectPortSelect");
@@ -307,7 +313,7 @@ const CHAT_CHANNELS_STORAGE_KEY = "blackbox.chat.channels";
 const CHAT_PLACEHOLDER_AI = "Write a message. Enter to send, Shift+Enter for new line.";
 const CHAT_PLACEHOLDER_DM = "Write a DM to selected node. Enter to send, Shift+Enter for new line.";
 const CHAT_PLACEHOLDER_CHANS = "Write a channel message. Enter to send, Shift+Enter for new line.";
-const CHAT_AI_COMMANDS = new Set(["/summary", "/weather", "/activity", "/battery"]);
+const CHAT_AI_COMMANDS = new Set(["/summary", "/weather", "/activity", "/battery", "/nodecheck"]);
 const DEFAULT_CHAT_CHANNELS = [
   { id: "primary", name: "Primary Channel", channelIndex: 0 },
 ];
@@ -452,9 +458,64 @@ function applyAiSlashCommand(command) {
   if (!chatText || !chatForm || !CHAT_AI_COMMANDS.has(value) || chatState.mode !== CHAT_MODE_AI) {
     return;
   }
+  if (value === "/nodecheck") {
+    setChatCommandMenuOpen(false);
+    openNodeCheckPicker();
+    return;
+  }
   chatText.value = value;
   setChatCommandMenuOpen(false);
   chatForm.requestSubmit();
+}
+
+function openNodeCheckPicker() {
+  const picker = document.getElementById("nodecheckPicker");
+  const searchEl = document.getElementById("nodecheckSearch");
+  const listEl = document.getElementById("nodecheckList");
+  if (!picker || !listEl) return;
+
+  function renderPickerList(filter) {
+    const q = (filter || "").toLowerCase();
+    const nodes = getSelectableNodes().filter((n) => {
+      if (!q) return true;
+      return (
+        (n.shortName || "").toLowerCase().includes(q) ||
+        (n.longName  || "").toLowerCase().includes(q) ||
+        (n.userId    || "").toLowerCase().includes(q) ||
+        (n.id        || "").toLowerCase().includes(q)
+      );
+    });
+    listEl.innerHTML = "";
+    if (!nodes.length) {
+      listEl.innerHTML = '<div class="chat-peer-empty">No nodes found</div>';
+      return;
+    }
+    nodes.forEach((node) => {
+      const addr = getNodeAddress(node);
+      const item = document.createElement("div");
+      item.className = "chat-peer-item" + (node.online ? "" : " offline-node");
+      item.innerHTML = `<span class="chat-peer-item-text"><span class="chat-peer-item-name">${getNodeSlashLabel(node)}</span></span>`;
+      item.addEventListener("click", () => {
+        closeNodeCheckPicker();
+        if (chatText) chatText.value = `/nodecheck ${addr}`;
+        if (chatForm) chatForm.requestSubmit();
+      });
+      listEl.appendChild(item);
+    });
+  }
+
+  if (searchEl) {
+    searchEl.value = "";
+    searchEl.oninput = () => renderPickerList(searchEl.value);
+  }
+  renderPickerList("");
+  picker.hidden = false;
+  if (searchEl) setTimeout(() => searchEl.focus(), 50);
+}
+
+function closeNodeCheckPicker() {
+  const picker = document.getElementById("nodecheckPicker");
+  if (picker) picker.hidden = true;
 }
 
 function appendLog(message) {
@@ -629,6 +690,12 @@ function setChatPeerSelection(peerId, { syncWallet = true, persist = true } = {}
   if (chatPeerCashuButton) {
     chatPeerCashuButton.disabled = !chatState.selectedPeer;
   }
+  if (chatPeerLocateButton) {
+    chatPeerLocateButton.disabled = !chatState.selectedPeer;
+  }
+  if (chatPeerInfoButton) {
+    chatPeerInfoButton.disabled = !chatState.selectedPeer;
+  }
 }
 
 function getNodeAddress(node) {
@@ -642,6 +709,13 @@ function getNodeDisplayLabel(node) {
     return name;
   }
   return name === address ? address : `${name} (${address})`;
+}
+
+function getNodeSlashLabel(node) {
+  const addr = getNodeAddress(node);
+  const short = node?.shortName || "";
+  const long = node?.longName || "";
+  return [short, long, addr].filter(Boolean).join(" / ");
 }
 
 function getSelectableNodes() {
@@ -750,7 +824,7 @@ function renderChatPeerList() {
     listEl.innerHTML = '<div class="chat-peer-empty">No nodes match filters</div>';
     const activeNode = nodes.find((node) => getNodeAddress(node) === chatState.selectedPeer);
     if (chatPeerLabel) {
-      chatPeerLabel.textContent = activeNode ? getNodeDisplayLabel(activeNode) : "Select node";
+      chatPeerLabel.textContent = activeNode ? getNodeSlashLabel(activeNode) : "Select node";
     }
     return;
   }
@@ -772,7 +846,7 @@ function renderChatPeerList() {
     const item = document.createElement("div");
     item.className = "chat-peer-item" + (isActive ? " is-active" : "");
     item.dataset.peer = addr;
-    item.innerHTML = `<span class="chat-peer-item-name">${label}</span>` +
+    item.innerHTML = `<span class="chat-peer-item-text"><span class="chat-peer-item-name">${label}</span></span>` +
       (hasUnread ? `<span class="chat-peer-unread" title="Unread messages"><svg width="14" height="11" viewBox="0 0 14 11" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="0.5" y="0.5" width="13" height="10" rx="1" stroke="currentColor"/><path d="M1 1l6 5 6-5" stroke="currentColor" stroke-linecap="round"/></svg></span>` : "");
     item.addEventListener("click", () => {
       unreadPeers.delete(addr);
@@ -789,7 +863,7 @@ function renderChatPeerList() {
   // Update trigger label
   const activeNode = nodes.find((node) => getNodeAddress(node) === chatState.selectedPeer);
   if (chatPeerLabel) {
-    chatPeerLabel.textContent = activeNode ? getNodeDisplayLabel(activeNode) : "Select node";
+    chatPeerLabel.textContent = activeNode ? getNodeSlashLabel(activeNode) : "Select node";
   }
   updateChatPeerTriggerUnread();
 }
@@ -1913,6 +1987,7 @@ function openDeviceMetaModal() {
   }).catch((err) => {
     deviceMetaStatus.textContent = `Load error: ${err.message}`;
   });
+  refreshDeviceMetaPorts();
 }
 
 async function loadMapNodeOnlineWindow() {
@@ -2050,6 +2125,75 @@ async function openDeviceConnectModal() {
   deviceConnectModal.classList.remove("hidden");
   deviceConnectModal.setAttribute("aria-hidden", "false");
   await refreshDeviceConnectPorts();
+}
+
+async function refreshDeviceMetaPorts() {
+  if (!deviceMetaPortSelect) return;
+  if (deviceMetaPortRefresh) deviceMetaPortRefresh.disabled = true;
+  if (deviceMetaPortConnect) deviceMetaPortConnect.disabled = true;
+  if (deviceMetaPortStatus) deviceMetaPortStatus.textContent = "Scanning ports...";
+  try {
+    const payload = await fetchJson("/api/meshtastic/ports");
+    const ports = Array.isArray(payload.ports) ? payload.ports : [];
+    const selectedPort = String(payload.selectedPort || "").trim();
+    deviceMetaPortSelect.innerHTML = "";
+    const autoOption = document.createElement("option");
+    autoOption.value = "";
+    autoOption.textContent = "Auto-detect (recommended)";
+    deviceMetaPortSelect.appendChild(autoOption);
+    let matched = false;
+    ports.forEach((port) => {
+      const device = String(port?.device || "").trim();
+      if (!device) return;
+      const option = document.createElement("option");
+      option.value = device;
+      option.textContent = describeSerialPortOption(port);
+      if ((selectedPort && device === selectedPort) || (!selectedPort && Boolean(port?.isSelected))) {
+        option.selected = true;
+        matched = true;
+      }
+      deviceMetaPortSelect.appendChild(option);
+    });
+    if (selectedPort && !matched) {
+      const saved = document.createElement("option");
+      saved.value = selectedPort;
+      saved.textContent = `${selectedPort} - saved`;
+      saved.selected = true;
+      deviceMetaPortSelect.appendChild(saved);
+    }
+    if (deviceMetaPortStatus) deviceMetaPortStatus.textContent = selectedPort ? `Active: ${selectedPort}` : "";
+  } catch (e) {
+    if (deviceMetaPortStatus) deviceMetaPortStatus.textContent = `Scan failed: ${e.message}`;
+  } finally {
+    if (deviceMetaPortRefresh) deviceMetaPortRefresh.disabled = false;
+    if (deviceMetaPortConnect) deviceMetaPortConnect.disabled = false;
+  }
+}
+
+async function connectDeviceMetaPort() {
+  if (!deviceMetaPortSelect) return;
+  const port = String(deviceMetaPortSelect.value || "").trim();
+  if (deviceMetaPortRefresh) deviceMetaPortRefresh.disabled = true;
+  if (deviceMetaPortConnect) deviceMetaPortConnect.disabled = true;
+  if (deviceMetaPortStatus) deviceMetaPortStatus.textContent = port ? `Connecting to ${port}...` : "Connecting with auto-detect...";
+  try {
+    await fetchJson("/api/meshtastic/connect", { method: "POST", body: JSON.stringify({ port }) });
+    await loadStatus();
+    if (deviceMetaPortStatus) deviceMetaPortStatus.textContent = port ? `Connected to ${port}` : "Connected";
+  } catch (e) {
+    if (deviceMetaPortStatus) deviceMetaPortStatus.textContent = `Connect failed: ${e.message}`;
+  } finally {
+    if (deviceMetaPortRefresh) deviceMetaPortRefresh.disabled = false;
+    if (deviceMetaPortConnect) deviceMetaPortConnect.disabled = false;
+  }
+}
+
+if (deviceMetaPortRefresh) {
+  deviceMetaPortRefresh.addEventListener("click", refreshDeviceMetaPorts);
+}
+
+if (deviceMetaPortConnect) {
+  deviceMetaPortConnect.addEventListener("click", connectDeviceMetaPort);
 }
 
 function openWalletTestModeWarningModal() {
@@ -5889,6 +6033,9 @@ chatText.addEventListener("keydown", (event) => {
     setChatCommandMenuOpen(false);
     return;
   }
+  if (event.key === "Escape") {
+    closeNodeCheckPicker();
+  }
   if (event.key === "Enter" && !event.shiftKey) {
     event.preventDefault();
     chatForm.requestSubmit();
@@ -5919,6 +6066,15 @@ document.addEventListener("click", (event) => {
   const insideLauncher = chatCommandMenu.contains(target) || chatCommandButton?.contains(target);
   if (!insideLauncher) {
     setChatCommandMenuOpen(false);
+  }
+});
+
+document.addEventListener("click", (event) => {
+  const picker = document.getElementById("nodecheckPicker");
+  if (!picker || picker.hidden) return;
+  const launcher = chatCommandLauncher;
+  if (launcher && !launcher.contains(event.target)) {
+    closeNodeCheckPicker();
   }
 });
 
@@ -5971,6 +6127,28 @@ if (chatPeerTrigger) {
     const listEl = document.getElementById("chatPeerList");
     if (listEl) listEl.hidden = !listEl.hidden;
     if (chatChannelList) chatChannelList.hidden = true;
+  });
+}
+
+if (chatPeerLocateButton) {
+  chatPeerLocateButton.addEventListener("click", () => {
+    const peerId = chatState.selectedPeer;
+    if (!peerId) return;
+    openNodesMap();
+    setTimeout(() => {
+      const pos = _renderedPosById.get(peerId);
+      if (pos && _mapInstance) {
+        _mapInstance.setView([pos.lat, pos.lon], 14, { animate: true });
+      }
+    }, 400);
+  });
+}
+
+if (chatPeerInfoButton) {
+  chatPeerInfoButton.addEventListener("click", () => {
+    const peerId = chatState.selectedPeer;
+    if (!peerId) return;
+    openNodeModal(peerId);
   });
 }
 

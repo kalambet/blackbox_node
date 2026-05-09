@@ -387,6 +387,7 @@ body {
 
 .chat-peer-item {
   display: flex;
+  flex-direction: row;
   align-items: center;
   padding: 6px 8px;
   cursor: pointer;
@@ -409,10 +410,50 @@ body {
   color: #a0d4f0;
 }
 
+.chat-peer-item-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
 .chat-peer-item-name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+
+.chat-peer-icon-btn {
+  flex-shrink: 0;
+  width: 26px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--panel);
+  border-top: 1px solid var(--edge-light);
+  border-left: 1px solid var(--edge-light);
+  border-right: 1px solid var(--edge-dark);
+  border-bottom: 1px solid var(--edge-dark);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.chat-peer-icon-btn svg {
+  width: 13px;
+  height: 13px;
+}
+
+.chat-peer-icon-btn:hover:not(:disabled) {
+  background: #1e2e3e;
+  color: var(--fg);
+}
+
+.chat-peer-icon-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
 }
 
 .chat-peer-unread {
@@ -587,7 +628,7 @@ select {
   border-right: 2px solid var(--edge-light);
   border-bottom: 2px solid var(--edge-light);
   border-radius: 0;
-  padding: 7px 8px;
+  padding: 7px 26px 7px 8px;
   background: #1f2226;
   color: var(--ink);
   font: inherit;
@@ -855,6 +896,49 @@ select {
   border-right: 2px solid var(--edge-dark);
   border-bottom: 2px solid var(--edge-dark);
   z-index: 30;
+}
+
+.nodepick-modal {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 6px);
+  width: 280px;
+  max-height: 300px;
+  display: flex;
+  flex-direction: column;
+  background: #171d24;
+  border-top: 2px solid var(--edge-light);
+  border-left: 2px solid var(--edge-light);
+  border-right: 2px solid var(--edge-dark);
+  border-bottom: 2px solid var(--edge-dark);
+  z-index: 31;
+}
+
+.nodepick-header {
+  padding: 6px 8px 4px;
+  font-family: "Press Start Local", monospace;
+  font-size: 7px;
+  text-transform: uppercase;
+  color: var(--muted);
+  border-bottom: 1px solid var(--edge-dark);
+  flex-shrink: 0;
+}
+
+.nodepick-search {
+  background: var(--surface);
+  border: none;
+  border-bottom: 1px solid var(--edge-dark);
+  color: var(--fg);
+  font-family: Consolas, "Cascadia Mono", "Courier New", monospace;
+  font-size: 11px;
+  padding: 5px 8px;
+  outline: none;
+  flex-shrink: 0;
+}
+
+.nodepick-list {
+  overflow-y: auto;
+  flex: 1;
 }
 
 .chat-command-item {
@@ -4153,43 +4237,96 @@ textarea,
 
 /* Device metadata modal */
 .device-meta-panel {
-  width: min(420px, calc(100vw - 32px));
+  width: min(560px, calc(100vw - 32px));
 }
 
 .device-meta-form {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 0;
-  padding: 2px 0;
-  overflow-y: auto;
-  max-height: min(70vh, 520px);
+  padding: 4px 0 0;
+  overflow-y: visible;
+  max-height: none;
 }
 
 .device-meta-section {
-  display: grid;
-  gap: 8px;
-  padding: 12px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 0;
   border-bottom: 1px solid var(--panel-2);
 }
 
 .device-meta-section:last-of-type {
   border-bottom: none;
-  padding-bottom: 6px;
+  padding-bottom: 4px;
 }
 
 .device-meta-section-label {
-  font-size: 8px;
+  font-size: 7px;
   font-family: "Press Start Local", monospace;
   color: var(--accent);
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  opacity: 0.7;
-  margin-bottom: 2px;
+  letter-spacing: 0.1em;
+  opacity: 0.55;
+  margin-bottom: 0;
 }
 
 .device-meta-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 8px;
+  gap: 6px;
+}
+
+.device-meta-row-4 {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.device-meta-row-4 .device-meta-field-wide {
+  grid-column: span 1;
+}
+
+/* TAK + Connection side by side */
+.device-meta-section-inline {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 20px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--panel-2);
+}
+
+.device-meta-section-inline:last-of-type {
+  border-bottom: none;
+}
+
+.device-meta-inline-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Connection section port row — select + refresh + connect in one line */
+.device-meta-port-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 4px;
+  align-items: end;
+}
+
+.device-meta-port-btn {
+  flex-shrink: 0;
+  width: 28px;
+  height: 27px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  opacity: 0.75;
+}
+
+.device-meta-port-btn:hover {
+  opacity: 1;
 }
 
 .device-meta-field {
@@ -4198,15 +4335,17 @@ textarea,
 }
 
 .device-meta-label {
-  font-size: 8px;
+  font-size: 7px;
   font-family: "Press Start Local", monospace;
   color: var(--muted);
   text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.8;
 }
 
 .device-meta-hint {
   font-size: 8px;
-  opacity: 0.6;
+  opacity: 0.5;
   text-transform: none;
   font-family: inherit;
 }
@@ -4218,16 +4357,55 @@ textarea,
   padding: 5px 7px;
 }
 
+.device-meta-form select {
+  padding: 5px 26px 5px 7px;
+  font-size: 11px;
+}
+
+/* Node role row — role select + danger button aligned to bottom */
+.device-meta-role-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: end;
+}
+
+.device-meta-role-row .device-meta-field {
+  min-width: 0;
+}
+
+.device-meta-role-row > button {
+  align-self: end;
+  white-space: nowrap;
+  height: 27px;
+  padding: 0 10px;
+  font-size: 9px;
+}
+
 .device-meta-field-btn button {
   width: 100%;
   margin-top: 0;
+  white-space: nowrap;
+}
+
+/* TAK inputs — compact fixed-width columns */
+.device-meta-tak-row {
+  display: grid;
+  grid-template-columns: 72px 72px;
+  gap: 6px;
+}
+
+.device-meta-tak-row input {
+  width: 100%;
 }
 
 .device-meta-actions {
   display: grid;
   grid-template-columns: 1fr;
   gap: 6px;
-  padding-top: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--panel-2);
+  margin-top: 2px;
 }
 
 .device-meta-actions button {
@@ -4268,8 +4446,21 @@ textarea,
 }
 
 @media (max-width: 560px) {
-  .device-meta-row {
+  .device-meta-row,
+  .device-meta-row-4 {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .device-meta-section-inline {
     grid-template-columns: 1fr;
+  }
+
+  .device-meta-role-row {
+    grid-template-columns: 1fr;
+  }
+
+  .device-meta-role-row button {
+    width: 100%;
   }
 
   .device-meta-actions {
@@ -4278,6 +4469,17 @@ textarea,
 
   .device-connect-actions {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 380px) {
+  .device-meta-row,
+  .device-meta-row-4 {
+    grid-template-columns: 1fr;
+  }
+
+  .device-meta-field-wide {
+    grid-column: span 1;
   }
 }
 

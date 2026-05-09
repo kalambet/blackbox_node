@@ -2564,10 +2564,62 @@ function parseLocalSlashCommand(prompt) {
     return null;
   }
   const command = normalized.split(/\s+/, 1)[0].toLowerCase();
-  if (command === "/summary" || command === "/weather" || command === "/activity" || command === "/battery") {
+  if (command === "/summary" || command === "/weather" || command === "/activity" || command === "/battery" || command === "/nodecheck") {
     return { name: command, raw: normalized };
   }
   return null;
+}
+
+function buildNodeCheckContext(nodeArg) {
+  const q = String(nodeArg || "").trim().toLowerCase();
+  if (!q) return { error: "No node specified" };
+  const node = Object.values(knownNodes).find((n) =>
+    (n.shortName || "").toLowerCase().includes(q) ||
+    (n.longName  || "").toLowerCase().includes(q) ||
+    (n.userId    || "").toLowerCase() === q ||
+    (n.id        || "").toLowerCase() === q
+  );
+  if (!node) return { error: "Node not found", query: nodeArg };
+  const now = Date.now();
+  const lastSeen = node.lastSeenAt || node.lastHeard || null;
+  const ageSec = lastSeen ? Math.round((now - new Date(lastSeen).getTime()) / 1000) : null;
+  const metrics = node.deviceMetrics || node.lastDecoded?.deviceMetrics || {};
+  return {
+    identity: {
+      id: node.id,
+      userId: node.userId,
+      shortName: node.shortName,
+      longName: node.longName,
+      role: node.role,
+      meshtasticRole: node.meshtasticRole,
+      hardware: node.hardware,
+      modemPreset: node.modemPreset,
+      region: node.region,
+    },
+    status: {
+      online: isNodeOnline(node),
+      live: Array.isArray(node.observedPortnums) && node.observedPortnums.length > 0,
+      lastSeen: lastSeen,
+      ageSeconds: ageSec,
+      hopsAway: node.hopsAway ?? null,
+      snr: node.snr ?? null,
+    },
+    power: {
+      batteryLevel: metrics.batteryLevel ?? node.batteryLevel ?? null,
+      voltage: metrics.voltage ?? node.voltage ?? null,
+    },
+    position: {
+      latitude: node.latitude ?? null,
+      longitude: node.longitude ?? null,
+      altitude: node.altitude ?? null,
+    },
+    environment: node.environmentMetrics || null,
+    activity: {
+      observedPortnums: node.observedPortnums || [],
+      lastDecoded: node.lastDecoded || null,
+    },
+    neighbors: (node.neighbors || []).map((n) => ({ nodeId: n.nodeId, snr: n.snr })),
+  };
 }
 
 function buildSlashCommandSystemPrompt(commandName) {
@@ -2597,6 +2649,15 @@ function buildSlashCommandSystemPrompt(commandName) {
       "You are given structured telemetry about node battery levels and freshness.",
       "Summarize only the supplied data. Do not invent charge trends or power consumption not present in the data.",
       "Highlight critical and low-battery nodes first, mention the overall battery picture, and keep the answer concise and practical.",
+      "Reply in the same language as the user if it is evident; otherwise use English.",
+    ].join(" ");
+  }
+  if (commandName === "/nodecheck") {
+    return [
+      "You are an operations assistant for an offline Meshtastic network dashboard.",
+      "You are given full telemetry for a single node.",
+      "Give a concise health assessment covering: signal quality (SNR, hops), battery/voltage, last seen time, sensor/environment data if present, neighbors.",
+      "Flag anything unusual or worth attention. Summarize only the supplied data — do not invent metrics.",
       "Reply in the same language as the user if it is evident; otherwise use English.",
     ].join(" ");
   }
@@ -2657,6 +2718,22 @@ function buildSlashCommandFallback(commandName, context) {
     );
   }
 
+  if (commandName === "/nodecheck") {
+    if (context.error) return `Node check: ${context.error}${context.query ? ` ("${context.query}")` : ""}.`;
+    const id = context.identity;
+    const st = context.status;
+    const pw = context.power;
+    const parts = [
+      `${id.longName || id.shortName || id.userId} (${id.userId})`,
+      st.online ? "online" : "offline",
+      st.ageSeconds != null ? `last seen ${Math.round(st.ageSeconds / 60)}m ago` : null,
+      st.snr != null ? `SNR ${st.snr} dB` : null,
+      st.hopsAway != null ? `${st.hopsAway} hop(s)` : null,
+      pw.batteryLevel != null ? `battery ${pw.batteryLevel}%` : null,
+    ];
+    return trimResponse(parts.filter(Boolean).join(", ") + ".");
+  }
+
   const lowBattery = context.lowBatteryNodes.length
     ? `Low battery: ${context.lowBatteryNodes.map((node) => `${node.name} ${node.batteryLevel}%`).join(", ")}.`
     : "No low-battery nodes flagged.";
@@ -2679,6 +2756,12 @@ async function generateSlashCommandReply(peerId, slashCommand) {
     context = buildActivityCommandContext();
   } else if (slashCommand.name === "/battery") {
     context = buildBatteryCommandContext();
+  } else if (slashCommand.name === "/nodecheck") {
+    const nodeArg = slashCommand.raw.slice("/nodecheck".length).trim();
+    context = buildNodeCheckContext(nodeArg);
+    if (context.error) {
+      return buildSlashCommandFallback(slashCommand.name, context);
+    }
   } else {
     context = buildSummaryCommandContext();
   }
@@ -2699,7 +2782,7 @@ async function generateSlashCommandReply(peerId, slashCommand) {
         ],
         temperature: Math.min(aiSettings.localTemperature, 0.3),
         top_p: aiSettings.localTopP,
-        max_tokens: Math.min(aiSettings.localMaxTokens, 320),
+        max_tokens: Math.min(aiSettings.localMaxTokens, slashCommand.name === "/nodecheck" ? 400 : 320),
         stream: false,
       }),
     });
@@ -2785,7 +2868,7 @@ function clearMessages(scope, peerId = "", channelIndex = null) {
         return !(sender === normalizedPeerId && recipient === "local-ai");
       }
       if (direction === "out") {
-        return !(sender === "local-ui" && recipient === normalizedPeerId);
+        return !((sender === "local-ui" || sender === "local-wallet") && recipient === normalizedPeerId);
       }
       return true;
     });
