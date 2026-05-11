@@ -9,6 +9,9 @@ const openAiSettingsButton = document.getElementById("openAiSettingsButton");
 const openHelpButton = document.getElementById("openHelpButton");
 const openWalletButton = document.getElementById("openWalletButton");
 const nodesList = document.getElementById("nodesList");
+const nodesPanel = document.querySelector(".nodes-panel");
+const leftColumn = document.querySelector(".left-column");
+const leftColumnResizeHandle = document.getElementById("leftColumnResizeHandle");
 const clearLogButton = document.getElementById("clearLogButton");
 const copyAllLogButton = document.getElementById("copyAllLogButton");
 const chatForm = document.getElementById("chatForm");
@@ -7595,6 +7598,102 @@ function connectEvents() {
   };
 }
 
+function initLeftColumnPanelResize() {
+  if (!leftColumn || !nodesPanel || !leftColumnResizeHandle) return;
+
+  const mobileQuery = window.matchMedia("(max-width: 1120px)");
+  const storageKey = "leftColumnNodesPanelHeight";
+  const minNodesHeight = 140;
+  const minLogHeight = 140;
+  let dragState = null;
+
+  const applyNodesHeight = (height) => {
+    const value = Math.max(minNodesHeight, Math.round(height));
+    leftColumn.style.setProperty("--nodes-panel-height", `${value}px`);
+    try {
+      localStorage.setItem(storageKey, String(value));
+    } catch (_) {}
+  };
+
+  const clearNodesHeight = () => {
+    leftColumn.style.removeProperty("--nodes-panel-height");
+  };
+
+  const positionHandle = () => {
+    const nodesRect = nodesPanel.getBoundingClientRect();
+    const leftRect = leftColumn.getBoundingClientRect();
+    const top = nodesRect.bottom - leftRect.top;
+    leftColumn.style.setProperty("--left-resizer-top", `${Math.round(top)}px`);
+  };
+
+  const onPointerMove = (event) => {
+    if (!dragState || mobileQuery.matches) return;
+    const offset = event.clientY - dragState.startY;
+    const target = dragState.startHeight + offset;
+    const maxHeight = dragState.maxHeight();
+    const clamped = Math.max(minNodesHeight, Math.min(maxHeight, target));
+    leftColumn.style.setProperty("--nodes-panel-height", `${Math.round(clamped)}px`);
+    positionHandle();
+  };
+
+  const stopDrag = () => {
+    if (!dragState) return;
+    document.body.classList.remove("is-resizing-panels");
+    window.removeEventListener("pointermove", onPointerMove);
+    window.removeEventListener("pointerup", stopDrag);
+    window.removeEventListener("pointercancel", stopDrag);
+    const current = parseFloat(getComputedStyle(nodesPanel).height);
+    if (Number.isFinite(current)) applyNodesHeight(current);
+    dragState = null;
+  };
+
+  leftColumnResizeHandle.addEventListener("pointerdown", (event) => {
+    if (mobileQuery.matches) return;
+    const nodesRect = nodesPanel.getBoundingClientRect();
+    const leftRect = leftColumn.getBoundingClientRect();
+    const logRect = document.querySelector(".log-panel")?.getBoundingClientRect();
+    dragState = {
+      startY: event.clientY,
+      startHeight: nodesRect.height,
+      maxHeight: () => {
+        if (logRect) {
+          const maxByLogTop = logRect.bottom - nodesRect.top - minLogHeight - 8;
+          return Math.max(minNodesHeight, maxByLogTop);
+        }
+        return Math.max(minNodesHeight, leftRect.bottom - nodesRect.top - minLogHeight);
+      },
+    };
+    document.body.classList.add("is-resizing-panels");
+    leftColumnResizeHandle.setPointerCapture(event.pointerId);
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", stopDrag);
+    window.addEventListener("pointercancel", stopDrag);
+  });
+
+  const restoreStoredHeight = () => {
+    if (mobileQuery.matches) {
+      clearNodesHeight();
+      leftColumn.style.removeProperty("--left-resizer-top");
+      return;
+    }
+    let saved = null;
+    try {
+      saved = localStorage.getItem(storageKey);
+    } catch (_) {
+      saved = null;
+    }
+    const parsed = Number.parseFloat(saved || "");
+    if (Number.isFinite(parsed)) {
+      applyNodesHeight(parsed);
+    }
+    positionHandle();
+  };
+
+  restoreStoredHeight();
+  window.addEventListener("resize", positionHandle);
+  mobileQuery.addEventListener("change", restoreStoredHeight);
+}
+
 setWalletStatusRow();
 renderWalletHistory();
 if (walletPreferredUnitSelect) walletPreferredUnitSelect.value = walletState.settings.preferredUnit;
@@ -7611,6 +7710,7 @@ loadMessages();
 loadLogs();
 loadNodes();
 loadWalletClients();
+initLeftColumnPanelResize();
 connectEvents();
 
 if ("serviceWorker" in navigator) {

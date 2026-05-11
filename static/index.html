@@ -91,6 +91,13 @@
             <div class="node-empty">No nodes yet</div>
           </div>
         </section>
+        <div
+          id="leftColumnResizeHandle"
+          class="panel-resize-handle"
+          role="separator"
+          aria-orientation="horizontal"
+          aria-label="Resize nodes and log panels"
+        ></div>
         <section class="panel log-panel">
           <div class="panel-head">
             <h2>Log</h2>
@@ -1164,8 +1171,11 @@
   <div id="deviceMetaModal" class="modal-shell hidden" aria-hidden="true">
     <div class="modal-backdrop" data-close-device-meta></div>
     <section class="modal-panel panel device-meta-panel" role="dialog" aria-modal="true" aria-labelledby="deviceMetaTitle">
-      <div class="panel-head modal-head">
-        <h2 id="deviceMetaTitle">Device Settings</h2>
+      <div class="panel-head modal-head device-meta-head">
+        <div>
+          <h2 id="deviceMetaTitle">Device Settings</h2>
+          <div class="chat-subtitle">Radio identity, LoRa profile, TAK routing, and serial connection</div>
+        </div>
         <button id="deviceMetaClose" type="button" class="modal-close" aria-label="Close"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="1" y1="1" x2="11" y2="11"/><line x1="11" y1="1" x2="1" y2="11"/></svg></button>
       </div>
       <div class="device-meta-form">
@@ -1287,7 +1297,9 @@
                   <option value="">Auto-detect</option>
                 </select>
               </label>
-              <button id="deviceMetaPortRefresh" type="button" class="device-meta-port-btn" title="Refresh ports">↺</button>
+              <button id="deviceMetaPortRefresh" type="button" class="device-meta-port-btn" title="Refresh ports" aria-label="Refresh ports">
+                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5A4.5 4.5 0 1 0 11 7"/><path d="M10 1v2.5H7.5"/></svg>
+              </button>
               <button id="deviceMetaPortConnect" type="button" class="device-meta-port-btn" title="Reconnect">
                 <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="1" y1="6" x2="10" y2="6"/><polyline points="7,3 10,6 7,9"/></svg>
               </button>
@@ -1296,8 +1308,8 @@
           </div>
         </div>
 
-        <div id="deviceMetaStatus" class="device-status-text"></div>
         <div class="device-meta-actions">
+          <div id="deviceMetaStatus" class="device-status-text" role="status" aria-live="polite"></div>
           <button id="deviceMetaSave" type="button">Save to device</button>
         </div>
       </div>
