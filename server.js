@@ -2420,6 +2420,8 @@ function buildSummaryCommandContext() {
       hopsAway: node.hopsAway ?? null,
       neighborCount: Array.isArray(node.neighbors) ? node.neighbors.length : 0,
       observedPorts: Array.isArray(node.observedPortnums) ? node.observedPortnums : [],
+      uptimeSeconds: node.deviceMetrics?.uptimeSeconds ?? node.lastDecoded?.deviceMetrics?.uptimeSeconds ?? null,
+      temperature: node.environmentMetrics?.temperature ?? node.lastDecoded?.environmentMetrics?.temperature ?? null,
       weather: summarizeNodeWeather(node),
     })),
   };
@@ -2564,7 +2566,7 @@ function parseLocalSlashCommand(prompt) {
     return null;
   }
   const command = normalized.split(/\s+/, 1)[0].toLowerCase();
-  if (command === "/summary" || command === "/weather" || command === "/activity" || command === "/battery" || command === "/nodecheck") {
+  if (command === "/help" || command === "/summary" || command === "/weather" || command === "/activity" || command === "/battery" || command === "/nodecheck") {
     return { name: command, raw: normalized };
   }
   return null;
@@ -2672,6 +2674,9 @@ function buildSlashCommandSystemPrompt(commandName) {
 }
 
 function buildSlashCommandFallback(commandName, context) {
+  if (commandName === "/help") {
+    return "/summary - network stats\n/weather - conditions\n/activity - recent events\n/battery - power levels\n/nodecheck <name> - node status\n/wallet - balance\nsend <amount> <node> - send Cashu";
+  }
   if (commandName === "/weather") {
     if (!context.weather.totalSources) {
       return "No weather telemetry available yet. No fresh or historical node weather data was found.";
@@ -2734,20 +2739,30 @@ function buildSlashCommandFallback(commandName, context) {
     return trimResponse(parts.filter(Boolean).join(", ") + ".");
   }
 
-  const lowBattery = context.lowBatteryNodes.length
-    ? `Low battery: ${context.lowBatteryNodes.map((node) => `${node.name} ${node.batteryLevel}%`).join(", ")}.`
-    : "No low-battery nodes flagged.";
-  const stale = context.staleNodes.length
-    ? `Stale telemetry: ${context.staleNodes.map((node) => `${node.name} (${node.age})`).join(", ")}.`
-    : "No major telemetry staleness detected.";
+  const temps = context.nodes.map((n) => n.temperature).filter((t) => t != null).map(Number);
+  const avgTemp = temps.length ? (temps.reduce((a, b) => a + b, 0) / temps.length).toFixed(1) : null;
+  const minTemp = temps.length ? Math.min(...temps).toFixed(1) : null;
+  const maxTemp = temps.length ? Math.max(...temps).toFixed(1) : null;
+  const tempLine = avgTemp != null
+    ? `Avg temperature ${avgTemp}°C (min ${minTemp}°C, max ${maxTemp}°C across ${temps.length} sensor(s)).`
+    : null;
+  const lowBatteryCount = context.lowBatteryNodes.length;
+  const staleCount = context.staleNodes.length;
   return trimResponse(
-    `${context.network.totalNodes} nodes known, ${context.network.onlineNodes} online, ${context.network.offlineNodes} offline. ` +
-    `Network health looks ${context.network.health}. Approximate activity is ${context.network.approxLoad} based on ${context.activity.totalEvents} recent events in the last ${context.activity.windowMinutes} minutes. ` +
-    `${lowBattery} ${stale}`
+    [
+      `${context.network.onlineNodes}/${context.network.totalNodes} nodes online, ${context.network.offlineNodes} offline.`,
+      `Network health: ${context.network.health}. Activity: ${context.network.approxLoad} — ${context.activity.totalEvents} events in the last ${context.activity.windowMinutes} min (telemetry: ${context.activity.telemetryEvents}, messages: ${context.activity.meshMessages}, DMs: ${context.activity.directMessages}).`,
+      tempLine,
+      lowBatteryCount ? `${lowBatteryCount} node(s) low battery.` : "Battery OK.",
+      staleCount ? `${staleCount} node(s) with stale telemetry.` : null,
+    ].filter(Boolean).join(" ")
   );
 }
 
 async function generateSlashCommandReply(peerId, slashCommand) {
+  if (slashCommand.name === "/help") {
+    return buildSlashCommandFallback("/help", {});
+  }
   const aiSettings = getAiSettingsPayload();
   let context;
   if (slashCommand.name === "/weather") {
@@ -5725,21 +5740,33 @@ const server = http.createServer(async (req, res) => {
       }
       return sendJson(res, 200, {
         id,
+        meshNum: node.meshNum || null,
         userId: node.userId || node.id,
         shortName: node.shortName || "",
         longName: node.longName || "",
         role: node.role || "generic",
+        hardware: node.hardware || "",
         meshtasticRole: node.meshtasticRole || "",
+        nodeRole: node.nodeRole || "",
         modemPreset: node.modemPreset || "",
+        meshHopLimit: node.meshHopLimit ?? null,
+        region: node.region || "",
+        txPower: node.txPower ?? null,
         lastHeard: node.lastHeard || null,
         snr: node.snr ?? null,
         hopsAway: node.hopsAway ?? null,
+        batteryLevel: node.batteryLevel ?? null,
+        voltage: node.voltage ?? null,
+        latitude: node.latitude ?? null,
+        longitude: node.longitude ?? null,
+        networkSource: node.networkSource || "local",
         environmentMetrics: node.environmentMetrics || null,
         neighbors: node.neighbors || [],
         online: isNodeOnline(node),
         live: Array.isArray(node.observedPortnums) && node.observedPortnums.length > 0,
         observedPortnums: node.observedPortnums || [],
         lastDecoded: node.lastDecoded || null,
+        weather: node.weather || null,
         raw: node.raw || null,
         lastPacket: node.lastPacket || null,
       });

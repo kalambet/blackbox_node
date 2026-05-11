@@ -725,9 +725,8 @@ function getSelectableNodes() {
   const map = new Map();
   latestNodes.forEach((node) => {
     const address = getNodeAddress(node);
-    if (!address || map.has(address)) {
-      return;
-    }
+    if (!address || map.has(address)) return;
+    if (node.raw?.user?.isUnmessagable) return;
     map.set(address, node);
   });
   return Array.from(map.values());
@@ -2946,8 +2945,10 @@ function renderNodes(nodes = [], meshLinks = []) {
 
     const messageButton = item.querySelector(".node-action-message");
     const cashuButton = item.querySelector(".node-action-cashu");
+    const isUnmessagable = !!(node.raw?.user?.isUnmessagable);
+    if (isUnmessagable) { messageButton.remove(); cashuButton.remove(); }
     if (!nodeAddress) {
-      messageButton.disabled = true;
+      if (messageButton.isConnected) messageButton.disabled = true;
       cashuButton.disabled = true;
     } else {
       messageButton.addEventListener("click", (event) => {
@@ -3069,7 +3070,7 @@ async function openNodeModal(nodeId) {
       ["Name", payload.longName || payload.shortName || payload.userId || payload.id],
       ["ID", payload.userId || payload.id],
       ["Short", payload.shortName],
-      ["Hardware", payload.hardware],
+      ["Hardware", payload.hardware || raw.user?.hwModel],
       ...(payload.meshtasticRole ? [["Role", payload.meshtasticRole]] : []),
       ...(payload.modemPreset ? [["Modem", payload.modemPreset]] : []),
       ...(lat != null && lat !== 0 ? [["Lat", Number(lat).toFixed(5)], ["Lon", Number(lon).toFixed(5)]] : []),
@@ -3142,6 +3143,9 @@ async function openNodeModal(nodeId) {
     nodeModalRaw.textContent = JSON.stringify(payload.raw || {}, null, 2);
 
     const peerId = payload.userId || payload.id;
+    const modalUnmessagable = !!(payload.raw?.user?.isUnmessagable);
+    nodeModalChatButton.classList.toggle("hidden", modalUnmessagable);
+    nodeModalSendButton.classList.toggle("hidden", modalUnmessagable);
     nodeModalChatButton.onclick = () => { closeNodeModal(); closeNodesMap(); openDmForNode(peerId); };
     nodeModalSendButton.onclick = () => { closeNodeModal(); closeNodesMap(); openCashuSendForNode(peerId); };
 
