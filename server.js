@@ -1829,11 +1829,25 @@ async function cashuSwapPending() {
   const wallet = new Wallet(cd.mintUrl, { unit: "sat" });
   await wallet.loadMint(true);
 
+  function isSpentLikeError(errorMessage) {
+    const msg = String(errorMessage || "").toLowerCase();
+    return msg.includes("spent") || msg.includes("redeem") || msg.includes("already used");
+  }
+
   // Re-encode pending proofs as a token and receive them (= swap at mint)
   const tokenObj = { mint: cd.mintUrl, proofs: pending, unit: "sat" };
-  const receiveResult = await wallet.receive(tokenObj);
-  const batchHasErrors = receiveResultHasErrors(receiveResult);
-  let freshProofs = extractFreshProofsFromReceiveResult(receiveResult);
+  let batchHasErrors = true;
+  let freshProofs = [];
+  try {
+    const receiveResult = await wallet.receive(tokenObj);
+    batchHasErrors = receiveResultHasErrors(receiveResult);
+    freshProofs = extractFreshProofsFromReceiveResult(receiveResult);
+  } catch (err) {
+    if (isLikelyCashuNetworkError(err)) {
+      throw new Error("Mint is unreachable. Reconnect internet to confirm pending proofs.");
+    }
+    console.warn("[cashu] Batch pending proof confirmation failed, trying individually:", err?.message || err);
+  }
 
   // Some mints return partial failures for mixed pending sets. Salvage what can be
   // reissued proof-by-proof. Never drop unresolved proofs to avoid silent loss.
@@ -1842,11 +1856,6 @@ async function cashuSwapPending() {
     const droppedSpent = [];
     const maybeSpent = [];
     const unresolved = [];
-
-    function isSpentLikeError(errorMessage) {
-      const msg = String(errorMessage || "").toLowerCase();
-      return msg.includes("spent") || msg.includes("redeem") || msg.includes("already used");
-    }
 
     for (const proof of pending) {
       try {
@@ -1874,15 +1883,10 @@ async function cashuSwapPending() {
     if (maybeSpent.length > 0) {
       try {
         const spentStates = await wallet.checkProofsStates(maybeSpent);
-        const spentSecrets = new Set(
-          spentStates
-            .filter((s) => String(s?.state || "").toUpperCase() === "SPENT")
-            .map((s) => String(s?.secret || ""))
-            .filter(Boolean)
-        );
-        for (const proof of maybeSpent) {
-          const secret = String(proof?.secret || "");
-          if (secret && spentSecrets.has(secret)) {
+        for (let i = 0; i < maybeSpent.length; i += 1) {
+          const proof = maybeSpent[i];
+          const state = String(spentStates?.[i]?.state || "").toUpperCase();
+          if (state === "SPENT") {
             droppedSpent.push(proof);
           } else {
             unresolved.push(proof);
