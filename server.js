@@ -389,6 +389,26 @@ function getWalletExternalClients() {
   return Array.isArray(appSettings.walletExternalClients) ? appSettings.walletExternalClients : [];
 }
 
+function getFavoriteNodes() {
+  return Array.isArray(appSettings.favoriteNodes) ? appSettings.favoriteNodes : [];
+}
+
+function isFavoriteNode(nodeId) {
+  const id = String(nodeId || "").trim();
+  return Boolean(id && getFavoriteNodes().includes(id));
+}
+
+function setFavoriteNode(nodeId, favorite) {
+  const id = String(nodeId || "").trim();
+  if (!id) throw new Error("nodeId required");
+  const current = getFavoriteNodes();
+  appSettings.favoriteNodes = favorite
+    ? (current.includes(id) ? current : [...current, id])
+    : current.filter((n) => n !== id);
+  persistSettings();
+  return appSettings.favoriteNodes;
+}
+
 function addWalletExternalClient(nodeId) {
   const id = String(nodeId || "").trim();
   if (!id) throw new Error("nodeId required");
@@ -3104,17 +3124,25 @@ function getNodesPayload() {
   return {
     nodes: nodes
       .sort((a, b) => {
+        const aId = String(a.userId || a.id || "").trim();
+        const bId = String(b.userId || b.id || "").trim();
+        const aFavorite = isFavoriteNode(aId) ? 1 : 0;
+        const bFavorite = isFavoriteNode(bId) ? 1 : 0;
+        if (aFavorite !== bFavorite) {
+          return bFavorite - aFavorite;
+        }
         const aOnline = isNodeOnline(a) ? 1 : 0;
         const bOnline = isNodeOnline(b) ? 1 : 0;
         if (aOnline !== bOnline) {
           return bOnline - aOnline;
         }
-        return String(a.userId || a.id).localeCompare(String(b.userId || b.id));
+        return aId.localeCompare(bId);
       })
       .map((node) => ({
         ...node,
         online: isNodeOnline(node),
         live: Array.isArray(node.observedPortnums) && node.observedPortnums.length > 0,
+        favorite: isFavoriteNode(node.userId || node.id),
       })),
     meshLinks: activeLinks,
   };
@@ -5662,6 +5690,18 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 200, getNodesPayload());
     }
 
+    if (req.method === "POST" && req.url === "/api/node-favorite") {
+      const body = await readJson(req);
+      try {
+        const nodeId = String(body.nodeId || "").trim();
+        const favorites = setFavoriteNode(nodeId, Boolean(body.favorite));
+        broadcast("nodes", getNodesPayload());
+        return sendJson(res, 200, { ok: true, nodeId, favorite: isFavoriteNode(nodeId), favorites });
+      } catch (e) {
+        return sendJson(res, 400, { error: e.message });
+      }
+    }
+
     if (req.method === "GET" && req.url === "/api/device-meta") {
       const localNode = localMeshNodeId
         ? Object.values(knownNodes).find((n) => String(n.meshNum) === localMeshNodeId)
@@ -5768,6 +5808,7 @@ const server = http.createServer(async (req, res) => {
         neighbors: node.neighbors || [],
         online: isNodeOnline(node),
         live: Array.isArray(node.observedPortnums) && node.observedPortnums.length > 0,
+        favorite: isFavoriteNode(node.userId || node.id || id),
         observedPortnums: node.observedPortnums || [],
         lastDecoded: node.lastDecoded || null,
         weather: node.weather || null,

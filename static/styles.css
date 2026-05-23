@@ -411,6 +411,11 @@ body {
   color: #a0d4f0;
 }
 
+.chat-peer-item.is-favorite {
+  border-left: 2px solid #f5c84c;
+  padding-left: 6px;
+}
+
 .chat-peer-item-text {
   display: flex;
   flex-direction: column;
@@ -423,6 +428,21 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.node-favorite-indicator {
+  display: inline-grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  color: #f5c84c;
+  flex: 0 0 14px;
+}
+
+.node-favorite-indicator svg {
+  width: 12px;
+  height: 12px;
+  fill: currentColor;
 }
 
 
@@ -1150,6 +1170,10 @@ body.is-resizing-panels {
   border-bottom: 1px solid var(--edge-dark);
 }
 
+.node-item.favorite {
+  border-left-color: #f5c84c;
+}
+
 .node-item.weather {
   background: #2b3138;
 }
@@ -1243,8 +1267,9 @@ body.is-resizing-panels {
 }
 
 .node-actions {
-  display: grid;
-  grid-template-columns: repeat(2, 24px);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
   gap: 5px;
 }
 
@@ -1287,6 +1312,33 @@ body.is-resizing-panels {
 .node-action-btn.node-action-cashu {
   background: #314e3d;
   color: #e6ffe6;
+}
+
+.node-action-btn.node-action-favorite {
+  display: none;
+  background: transparent;
+  color: #e8d388;
+  border: 0;
+  box-shadow: none;
+}
+
+.node-item:hover .node-action-btn.node-action-favorite,
+.node-item:focus-within .node-action-btn.node-action-favorite,
+.node-item.favorite .node-action-btn.node-action-favorite {
+  display: inline-grid;
+}
+
+.node-action-btn.node-action-favorite svg {
+  fill: none;
+}
+
+.node-action-btn.node-action-favorite.is-favorite {
+  background: transparent;
+  color: #f5c84c;
+}
+
+.node-action-btn.node-action-favorite.is-favorite svg {
+  fill: currentColor;
 }
 
 .node-action-btn:disabled {
@@ -2291,6 +2343,16 @@ body.is-resizing-panels {
 
 .node-modal-action-btn--success svg {
   color: #4caf50;
+}
+
+.node-favorite-button.is-favorite {
+  color: #f5c84c;
+  border-color: #8a6a18;
+}
+
+.node-favorite-button.is-favorite svg {
+  color: #f5c84c;
+  fill: currentColor;
 }
 
 @keyframes locate-pulse {
@@ -3480,6 +3542,10 @@ textarea,
   background: #171c23;
   border: 1px solid var(--edge-dark);
   border-radius: 3px;
+}
+
+.wallet-client-row.is-favorite {
+  border-color: #8a6a18;
 }
 
 .wallet-client-label {

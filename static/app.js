@@ -52,6 +52,7 @@ const openNodesMapButton = document.getElementById("openNodesMapButton");
 const nodeModal = document.getElementById("nodeModal");
 const nodeModalClose = document.getElementById("nodeModalClose");
 const nodeModalDot = document.getElementById("nodeModalDot");
+const nodeModalFavoriteButton = document.getElementById("nodeModalFavoriteButton");
 const nodeModalPositionButton = document.getElementById("nodeModalPositionButton");
 const nodeModalChatButton = document.getElementById("nodeModalChatButton");
 const nodeModalSendButton = document.getElementById("nodeModalSendButton");
@@ -714,6 +715,32 @@ function getNodeDisplayLabel(node) {
   return name === address ? address : `${name} (${address})`;
 }
 
+function isFavoriteNode(node) {
+  return Boolean(node?.favorite);
+}
+
+function compareNodesForUi(a, b, { unreadFirst = false } = {}) {
+  const aFavorite = isFavoriteNode(a) ? 1 : 0;
+  const bFavorite = isFavoriteNode(b) ? 1 : 0;
+  if (aFavorite !== bFavorite) return bFavorite - aFavorite;
+
+  if (unreadFirst) {
+    const aUnread = unreadPeers.has(getNodeAddress(a)) ? 1 : 0;
+    const bUnread = unreadPeers.has(getNodeAddress(b)) ? 1 : 0;
+    if (aUnread !== bUnread) return bUnread - aUnread;
+  }
+
+  const aOnline = a?.online ? 1 : 0;
+  const bOnline = b?.online ? 1 : 0;
+  if (aOnline !== bOnline) return bOnline - aOnline;
+
+  return getNodeDisplayLabel(a).localeCompare(getNodeDisplayLabel(b));
+}
+
+function sortNodesForUi(nodes, options = {}) {
+  return (Array.isArray(nodes) ? nodes.slice() : []).sort((a, b) => compareNodesForUi(a, b, options));
+}
+
 function getNodeSlashLabel(node) {
   const addr = getNodeAddress(node);
   const short = node?.shortName || "";
@@ -729,7 +756,7 @@ function getSelectableNodes() {
     if (node.raw?.user?.isUnmessagable) return;
     map.set(address, node);
   });
-  return Array.from(map.values());
+  return sortNodesForUi(Array.from(map.values()));
 }
 
 function peerHasDmHistory(peerId) {
@@ -768,9 +795,22 @@ function populateNodeSelect(selectEl, preferredValue = "") {
   }
   const selectedBefore = preferredValue || selectEl.value || "";
   const nodes = getSelectableNodes();
-  const online = nodes.filter((n) => n.online);
-  const offline = nodes.filter((n) => !n.online);
+  const favorites = nodes.filter((n) => isFavoriteNode(n));
+  const favoriteIds = new Set(favorites.map(getNodeAddress));
+  const online = nodes.filter((n) => n.online && !favoriteIds.has(getNodeAddress(n)));
+  const offline = nodes.filter((n) => !n.online && !favoriteIds.has(getNodeAddress(n)));
   selectEl.innerHTML = '<option value="">Select node</option>';
+  if (favorites.length) {
+    const group = document.createElement("optgroup");
+    group.label = "Favorites";
+    favorites.forEach((node) => {
+      const option = document.createElement("option");
+      option.value = getNodeAddress(node);
+      option.textContent = getNodeDisplayLabel(node);
+      group.appendChild(option);
+    });
+    selectEl.appendChild(group);
+  }
   if (online.length) {
     const group = document.createElement("optgroup");
     group.label = "Online";
@@ -813,6 +853,34 @@ function syncNodeSelectors() {
   renderChatChannelList();
 }
 
+function setFavoriteButtonState(button, favorite) {
+  if (!button) return;
+  button.classList.toggle("is-favorite", Boolean(favorite));
+  button.setAttribute("aria-pressed", favorite ? "true" : "false");
+  button.title = favorite ? "Remove from favorites" : "Add to favorites";
+  button.setAttribute("aria-label", favorite ? "Remove node from favorites" : "Add node to favorites");
+}
+
+function updateFavoriteNodeLocal(nodeId, favorite) {
+  const id = String(nodeId || "").trim();
+  latestNodes = latestNodes.map((node) => (
+    getNodeAddress(node) === id ? { ...node, favorite: Boolean(favorite) } : node
+  ));
+  latestNodes = sortNodesForUi(latestNodes);
+  syncNodeSelectors();
+  syncWalletClientNodeSelect();
+}
+
+async function toggleNodeFavorite(nodeId, favorite) {
+  const id = String(nodeId || "").trim();
+  if (!id) return;
+  const data = await fetchJson("/api/node-favorite", {
+    method: "POST",
+    body: JSON.stringify({ nodeId: id, favorite }),
+  });
+  updateFavoriteNodeLocal(id, Boolean(data.favorite));
+}
+
 function renderChatPeerList() {
   const listEl = document.getElementById("chatPeerList");
   if (!listEl) return;
@@ -830,25 +898,19 @@ function renderChatPeerList() {
     }
     return;
   }
-  // Sort: unread peers first, then alphabetically
-  const sorted = [...filteredNodes].sort((a, b) => {
-    const aAddr = getNodeAddress(a);
-    const bAddr = getNodeAddress(b);
-    const aUnread = unreadPeers.has(aAddr) ? 0 : 1;
-    const bUnread = unreadPeers.has(bAddr) ? 0 : 1;
-    if (aUnread !== bUnread) return aUnread - bUnread;
-    return getNodeDisplayLabel(a).localeCompare(getNodeDisplayLabel(b));
-  });
+  const sorted = sortNodesForUi(filteredNodes, { unreadFirst: true });
   listEl.innerHTML = "";
   sorted.forEach((node) => {
     const addr = getNodeAddress(node);
     const label = getNodeDisplayLabel(node);
     const isActive = addr === chatState.selectedPeer;
     const hasUnread = unreadPeers.has(addr);
+    const isFavorite = isFavoriteNode(node);
     const item = document.createElement("div");
-    item.className = "chat-peer-item" + (isActive ? " is-active" : "");
+    item.className = "chat-peer-item" + (isActive ? " is-active" : "") + (isFavorite ? " is-favorite" : "");
     item.dataset.peer = addr;
     item.innerHTML = `<span class="chat-peer-item-text"><span class="chat-peer-item-name">${label}</span></span>` +
+      (isFavorite ? `<span class="node-favorite-indicator" title="Favorite"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l2.7 5.5 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.8 1-6.1-4.4-4.3 6.1-.9L12 3z"/></svg></span>` : "") +
       (hasUnread ? `<span class="chat-peer-unread" title="Unread messages"><svg width="14" height="11" viewBox="0 0 14 11" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="0.5" y="0.5" width="13" height="10" rx="1" stroke="currentColor"/><path d="M1 1l6 5 6-5" stroke="currentColor" stroke-linecap="round"/></svg></span>` : "");
     item.addEventListener("click", () => {
       unreadPeers.delete(addr);
@@ -2881,7 +2943,8 @@ function handleWalletModalFocusTrap(event) {
 }
 
 function renderNodes(nodes = [], meshLinks = []) {
-  latestNodes = Array.isArray(nodes) ? nodes.slice() : [];
+  const displayNodes = sortNodesForUi(nodes);
+  latestNodes = displayNodes;
   latestMeshLinks = Array.isArray(meshLinks) ? meshLinks.slice() : [];
   const onlineCount = latestNodes.filter((n) => n.online).length;
   const countEl = document.getElementById("nodesOnlineCount");
@@ -2891,7 +2954,7 @@ function renderNodes(nodes = [], meshLinks = []) {
   syncNodeSelectors();
   syncWalletClientNodeSelect();
   nodesList.innerHTML = "";
-  if (!nodes.length) {
+  if (!displayNodes.length) {
     nodesList.innerHTML = '<div class="node-empty">No nodes yet</div>';
     if (chatState.mode === CHAT_MODE_DM) {
       renderDmChat();
@@ -2899,9 +2962,9 @@ function renderNodes(nodes = [], meshLinks = []) {
     return;
   }
 
-  nodes.forEach((node) => {
+  displayNodes.forEach((node) => {
     const item = document.createElement("article");
-    item.className = `node-item ${node.online ? "online" : "offline"} ${node.role === "weather" ? "weather" : ""} ${node.live ? "live" : "snapshot"}`;
+    item.className = `node-item ${node.online ? "online" : "offline"} ${node.role === "weather" ? "weather" : ""} ${node.live ? "live" : "snapshot"} ${isFavoriteNode(node) ? "favorite" : ""}`;
     const nodeAddress = getNodeAddress(node);
 
     const name = node.longName || node.shortName || nodeAddress || "unknown";
@@ -2927,6 +2990,11 @@ function renderNodes(nodes = [], meshLinks = []) {
         <div class="node-meta"></div>
       </div>
       <div class="node-actions">
+        <button type="button" class="node-action-btn node-action-favorite" title="Add to favorites" aria-label="Add node to favorites" aria-pressed="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M12 3l2.7 5.5 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.8 1-6.1-4.4-4.3 6.1-.9L12 3z"></path>
+          </svg>
+        </button>
         <button type="button" class="node-action-btn node-action-message" title="Send message" aria-label="Send message to node">
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
             <path d="M4 5h16v10H8l-4 4V5z"></path>
@@ -2943,9 +3011,25 @@ function renderNodes(nodes = [], meshLinks = []) {
     item.querySelector(".node-name").textContent = name;
     item.querySelector(".node-meta").textContent = metaParts.join(" | ") || (node.online ? "online" : "offline");
 
+    const favoriteButton = item.querySelector(".node-action-favorite");
     const messageButton = item.querySelector(".node-action-message");
     const cashuButton = item.querySelector(".node-action-cashu");
     const isUnmessagable = !!(node.raw?.user?.isUnmessagable);
+    setFavoriteButtonState(favoriteButton, isFavoriteNode(node));
+    if (!nodeAddress) {
+      favoriteButton.disabled = true;
+    } else {
+      favoriteButton.addEventListener("click", async (event) => {
+        event.stopPropagation();
+        favoriteButton.disabled = true;
+        try {
+          await toggleNodeFavorite(nodeAddress, !isFavoriteNode(node));
+          renderNodes(latestNodes, latestMeshLinks);
+        } catch (e) {
+          favoriteButton.disabled = false;
+        }
+      });
+    }
     if (isUnmessagable) { messageButton.remove(); cashuButton.remove(); }
     if (!nodeAddress) {
       if (messageButton.isConnected) messageButton.disabled = true;
@@ -3060,6 +3144,7 @@ async function openNodeModal(nodeId) {
     const isOnline = !!payload.online;
     nodeModalDot.className = `node-dot${isOnline ? " node-dot--online" : " node-dot--offline"}`;
     nodeModalSubtitle.textContent = `${payload.role || "node"} | ${payload.observedPortnums?.length ? "live packets seen" : "snapshot only"}`;
+    setFavoriteButtonState(nodeModalFavoriteButton, Boolean(payload.favorite));
 
     const raw = payload.raw || {};
     const lat = raw.position?.latitude ?? raw.latitude;
@@ -3144,6 +3229,23 @@ async function openNodeModal(nodeId) {
 
     const peerId = payload.userId || payload.id;
     const modalUnmessagable = !!(payload.raw?.user?.isUnmessagable);
+    if (nodeModalFavoriteButton) {
+      nodeModalFavoriteButton.disabled = !peerId;
+      nodeModalFavoriteButton.onclick = async () => {
+        if (!peerId) return;
+        nodeModalFavoriteButton.disabled = true;
+        try {
+          await toggleNodeFavorite(peerId, !Boolean(payload.favorite));
+          payload.favorite = !Boolean(payload.favorite);
+          setFavoriteButtonState(nodeModalFavoriteButton, Boolean(payload.favorite));
+          renderNodes(latestNodes, latestMeshLinks);
+        } catch (e) {
+          setFavoriteButtonState(nodeModalFavoriteButton, Boolean(payload.favorite));
+        } finally {
+          nodeModalFavoriteButton.disabled = false;
+        }
+      };
+    }
     nodeModalChatButton.classList.toggle("hidden", modalUnmessagable);
     nodeModalSendButton.classList.toggle("hidden", modalUnmessagable);
     nodeModalChatButton.onclick = () => { closeNodeModal(); closeNodesMap(); openDmForNode(peerId); };
@@ -6660,13 +6762,21 @@ function renderWalletClients() {
     walletClientList.innerHTML = '<div class="wallet-hint">No approved clients.</div>';
     return;
   }
-  walletClients.forEach((nodeId) => {
-    const node = latestNodes.find((n) => (n.userId || n.id) === nodeId);
+  const sortedClients = walletClients.slice().sort((a, b) => {
+    const nodeA = latestNodes.find((n) => getNodeAddress(n) === a);
+    const nodeB = latestNodes.find((n) => getNodeAddress(n) === b);
+    if (nodeA && nodeB) return compareNodesForUi(nodeA, nodeB);
+    if (nodeA) return -1;
+    if (nodeB) return 1;
+    return String(a).localeCompare(String(b));
+  });
+  sortedClients.forEach((nodeId) => {
+    const node = latestNodes.find((n) => getNodeAddress(n) === nodeId);
     const label = node
-      ? `${node.shortName || node.longName || nodeId} (${nodeId})`
+      ? `${isFavoriteNode(node) ? "Favorite - " : ""}${node.shortName || node.longName || nodeId} (${nodeId})`
       : nodeId;
     const row = document.createElement("div");
-    row.className = "wallet-client-row";
+    row.className = `wallet-client-row${node && isFavoriteNode(node) ? " is-favorite" : ""}`;
     row.innerHTML = `<span class="wallet-client-label">${label}</span><button type="button" class="wallet-inline-action wallet-client-remove" data-id="${nodeId}">Remove</button>`;
     row.querySelector(".wallet-client-remove").addEventListener("click", async () => {
       try {
@@ -6685,10 +6795,10 @@ function syncWalletClientNodeSelect() {
   if (!walletClientNodeSelect) return;
   const current = walletClientNodeSelect.value;
   walletClientNodeSelect.innerHTML = '<option value="">Select a node...</option>';
-  latestNodes.forEach((n) => {
+  getSelectableNodes().forEach((n) => {
     const id = n.userId || n.id;
     if (!id || walletClients.includes(id)) return;
-    const label = `${n.shortName || n.longName || id} (${id})`;
+    const label = `${isFavoriteNode(n) ? "Favorite - " : ""}${n.shortName || n.longName || id} (${id})`;
     const opt = document.createElement("option");
     opt.value = id;
     opt.textContent = label;
