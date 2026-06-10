@@ -82,6 +82,35 @@ Blackbox Node includes a built-in **Bitcoin wallet** (on-chain, BIP-39/HD) and a
 
 This makes it possible to run basic economic activity such as tipping, paying for services, and splitting resources entirely over a radio mesh network.
 
+#### External Wallet Clients
+
+You can approve specific mesh nodes to control your wallet remotely over DM. This lets you trigger payments from a handheld Meshtastic device without touching the node's web UI.
+
+**Setup:** In the wallet **Settings** tab, enable **External Wallet Clients** and add the node(s) you want to authorize from the dropdown.
+
+**Workflow:**
+
+1. Send `/wallet` as a direct message to your node from an approved device.
+   The node replies with your current balance and available off-grid proofs:
+   ```
+   💰 22 sats
+   Proofs: [6][16]
+   send <amt> <node>
+   ```
+2. Reply with a send command using the target node's **Short Name** (4-character mesh identifier):
+   ```
+   send 6 f4e5
+   ```
+   The node sends a Cashu token directly to the target node over mesh, records the transaction in the wallet history, and confirms:
+   ```
+   ✓ Sent 6 sats to f4e5
+   ```
+
+**Requirements:**
+- The node must have off-grid proofs prepared for the exact amount (prepare them in the wallet Send tab beforehand)
+- Only direct messages from approved nodes trigger wallet commands — broadcast channel messages are ignored
+- The feature requires no internet; the node uses pre-split offline proofs
+
 ![Wallet](static/img/wallet.png)
 
 ---
@@ -119,7 +148,7 @@ npm start
 During `npm install`, the project bootstraps the local AI runtime automatically:
 
 - installs JavaScript dependencies
-- downloads a Windows `llama.cpp` runtime into `./llama/` if missing
+- downloads a platform-matched `llama.cpp` runtime into `./llama/` if missing (Windows/Linux/macOS)
 - downloads a starter GGUF model into `./models/` if missing
 - attempts to install the Meshtastic Python package into `./pydeps/` if Python is available
 
@@ -153,26 +182,22 @@ This creates `node_modules/` and runs the bootstrap installer for the local AI r
 
 Skip this step unless automatic bootstrap failed or you want to replace the runtime manually.
 
-Otherwise, the `llama/` folder must contain `llama-server.exe` and its companion DLLs. Download a prebuilt Windows release from the [llama.cpp releases page](https://github.com/ggerganov/llama.cpp/releases) and choose the `win-cuda`, `win-vulkan`, or `win-cpu` zip for your hardware.
+Otherwise, the `llama/` folder must contain `llama-server` (`llama-server.exe` on Windows) and the companion runtime libraries from a matching prebuilt package in the [llama.cpp releases page](https://github.com/ggerganov/llama.cpp/releases).
 
-Extract `llama-server.exe`, `llama.dll`, and the bundled `ggml*.dll` files into `./llama/`:
+Extract `llama-server` (or `llama-server.exe`) and the bundled `ggml`/`llama` runtime libraries into `./llama/`:
 
 ```text
 llama/
-  llama-server.exe
-  llama.dll
-  ggml.dll
-  ggml-base.dll
-  ggml-cpu.dll
-  ggml-cpu-*.dll
-  ggml-rpc.dll
+  llama-server(.exe)
+  llama runtime libraries (.dll / .so / .dylib depending on OS)
 ```
 
-Pick the build that matches your machine:
+Pick the build that matches your machine and OS/CPU:
 
-- No GPU -> `llama-b...-bin-win-cpu-x64.zip`
-- NVIDIA GPU -> `llama-b...-bin-win-cuda-cu12.x-x64.zip`
-- AMD / Intel GPU -> `llama-b...-bin-win-vulkan-x64.zip`
+- No GPU -> `...-cpu-...`
+- NVIDIA GPU -> `...-cuda-...`
+- AMD / Intel GPU -> `...-vulkan-...`
+- Apple Silicon (optional acceleration) -> `...-metal-...`
 
 ### 4. Download a model (manual fallback only)
 
@@ -224,7 +249,7 @@ npm start
 On launch:
 
 - the web UI opens at `http://127.0.0.1:7860`
-- `llama-server.exe` starts from `./llama/` and loads the selected model
+- `llama-server` (or `llama-server.exe` on Windows) starts and loads the selected model
 - the Python Meshtastic bridge (`bridge.py`) connects to a detected serial device
 - the installer prepares `./llama/`, `./models/`, and tries to prepare `./pydeps/`
 
@@ -237,7 +262,7 @@ On launch:
 | Node.js 18+ | Runtime for the web server |
 | Python 3.11+ | Required only for Meshtastic radio and TAK features |
 | Internet during `npm install` | Needed to download `llama.cpp`, a starter model, and optional Python deps |
-| `./llama/llama-server.exe` | Auto-downloaded on install if missing |
+| `./llama/llama-server` (or `llama-server.exe` on Windows) | Auto-downloaded on install if missing |
 | At least one `.gguf` in `./models/` | Auto-downloaded on install if missing |
 | Meshtastic device on USB serial | Optional, but required for radio, telemetry, and TAK transport |
 
@@ -282,6 +307,7 @@ On launch:
 - Lightning invoice payment via Cashu melt
 - QR code generation for Bitcoin addresses and Lightning invoices
 - Transaction history
+- External Wallet Clients: approve specific mesh nodes to control your wallet remotely via DM commands
 
 **UI and storage**
 
@@ -318,6 +344,8 @@ On launch:
 ## Donate
 
 If this project is useful to you, consider supporting development:
+
+Sponsor on GitHub: [github.com/sponsors/wadadawadada](https://github.com/sponsors/wadadawadada)
 
 | Chain | Address |
 |---|---|

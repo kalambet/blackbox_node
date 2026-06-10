@@ -781,6 +781,10 @@ def snapshot_nodes(interface: Any) -> list[dict[str, Any]]:
         or ""
     )
     local_modem_preset = ""
+    local_mesh_hop_limit = None
+    local_region = "UNSET"
+    local_tx_power = None
+    local_node_role = "CLIENT"
     try:
         from meshtastic.protobuf import config_pb2  # type: ignore
 
@@ -788,8 +792,25 @@ def snapshot_nodes(interface: Any) -> list[dict[str, Any]]:
         preset_value = getattr(local_lora, "modem_preset", None)
         if preset_value is not None:
             local_modem_preset = str(config_pb2.Config.LoRaConfig.ModemPreset.Name(int(preset_value)) or "")
+        raw_hop = getattr(local_lora, "hop_limit", None)
+        if raw_hop is not None:
+            local_mesh_hop_limit = int(raw_hop)
+        region_value = getattr(local_lora, "region", None)
+        if region_value is not None:
+            local_region = str(config_pb2.Config.LoRaConfig.RegionCode.Name(int(region_value)) or "UNSET")
+        raw_tx = getattr(local_lora, "tx_power", None)
+        if raw_tx is not None:
+            local_tx_power = int(raw_tx)
+        local_device = getattr(getattr(getattr(interface, "localNode", None), "localConfig", None), "device", None)
+        role_value = getattr(local_device, "role", None)
+        if role_value is not None:
+            local_node_role = str(config_pb2.Config.DeviceConfig.Role.Name(int(role_value)) or "CLIENT")
     except Exception:
         local_modem_preset = ""
+        local_mesh_hop_limit = None
+        local_region = "UNSET"
+        local_tx_power = None
+        local_node_role = "CLIENT"
     for node_id, node in raw_nodes.items():
         user = node.get("user", {}) or {}
         position = node.get("position", {}) or {}
@@ -817,6 +838,10 @@ def snapshot_nodes(interface: Any) -> list[dict[str, Any]]:
                 "latitude": position.get("latitude"),
                 "longitude": position.get("longitude"),
                 "modemPreset": local_modem_preset if str(node.get("num") or node_id or "") == local_node_num else "",
+                "meshHopLimit": local_mesh_hop_limit if str(node.get("num") or node_id or "") == local_node_num else None,
+                "region": local_region if str(node.get("num") or node_id or "") == local_node_num else "UNSET",
+                "txPower": local_tx_power if str(node.get("num") or node_id or "") == local_node_num else None,
+                "nodeRole": local_node_role if str(node.get("num") or node_id or "") == local_node_num else "",
                 "environmentMetrics": environment,
                 "neighbors": neighbors,
                 "raw": sanitize_for_json(node),
@@ -1157,16 +1182,39 @@ def main() -> int:
                     if lat is not None and lon is not None:
                         mesh_interface.localNode.setFixedPosition(float(lat), float(lon), 0)
                     modem_preset = str(payload.get("modemPreset") or "").strip().upper()
-                    if modem_preset:
-                        local_node = mesh_interface.localNode
+                    mesh_hop_limit = payload.get("meshHopLimit")
+                    region = str(payload.get("region") or "").strip().upper()
+                    tx_power = payload.get("txPower")
+                    local_node = mesh_interface.localNode
+                    if modem_preset or mesh_hop_limit is not None or region or tx_power is not None:
                         if len(local_node.localConfig.ListFields()) == 0:
                             local_node.requestConfig(local_node.localConfig.DESCRIPTOR.fields_by_name.get("lora"))
-                        local_node.localConfig.lora.modem_preset = config_pb2.Config.LoRaConfig.ModemPreset.Value(modem_preset)
+                        if modem_preset:
+                            local_node.localConfig.lora.modem_preset = config_pb2.Config.LoRaConfig.ModemPreset.Value(modem_preset)
+                        if mesh_hop_limit is not None:
+                            local_node.localConfig.lora.hop_limit = max(0, min(7, int(mesh_hop_limit)))
+                        if region and region != "UNSET":
+                            local_node.localConfig.lora.region = config_pb2.Config.LoRaConfig.RegionCode.Value(region)
+                        if tx_power is not None:
+                            local_node.localConfig.lora.tx_power = max(0, min(30, int(tx_power)))
                         local_node.writeConfig("lora")
+                    node_role = str(payload.get("nodeRole") or "").strip().upper()
+                    if node_role:
+                        if len(local_node.localConfig.ListFields()) == 0:
+                            local_node.requestConfig(local_node.localConfig.DESCRIPTOR.fields_by_name.get("device"))
+                        local_node.localConfig.device.role = config_pb2.Config.DeviceConfig.Role.Value(node_role)
+                        local_node.writeConfig("device")
                     emit("device_meta_saved", {})
                     emit("nodes", {"nodes": snapshot_nodes(mesh_interface)})
                 except Exception as exc:
                     emit("error", {"message": f"set_device_meta failed: {exc}"})
+                continue
+            if message.get("type") == "reset_node_db":
+                try:
+                    mesh_interface.localNode.resetNodeDb()
+                    emit("node_db_reset", {})
+                except Exception as exc:
+                    emit("error", {"message": f"reset_node_db failed: {exc}"})
                 continue
             if message.get("type") == "send_tak":
                 payload = message.get("payload", {})

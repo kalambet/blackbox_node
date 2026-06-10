@@ -1044,6 +1044,30 @@
             <div class="wallet-fund-card wallet-testmode-card">
               <div class="wallet-testmode-row">
                 <div>
+                  <div class="modal-label">External Wallet Clients</div>
+                </div>
+                <label class="wallet-toggle-switch" aria-label="Enable external wallet clients">
+                  <input type="checkbox" id="walletExternalClientsToggle">
+                  <span class="wallet-toggle-track"><span class="wallet-toggle-thumb"></span></span>
+                </label>
+              </div>
+              <div id="walletExternalClientsHint" class="wallet-hint" style="margin-top:2px">Allow approved mesh nodes to control this wallet via DM commands.</div>
+            </div>
+
+            <div class="wallet-fund-card" id="walletExternalClientsCard" hidden>
+              <div class="wallet-inline-row" style="grid-template-columns: minmax(0,1fr) auto; margin-bottom:8px">
+                <select id="walletClientNodeSelect">
+                  <option value="">Select a node...</option>
+                </select>
+                <button id="walletClientAddButton" type="button">Add</button>
+              </div>
+              <div id="walletClientList" class="wallet-client-list"></div>
+              <div id="walletClientStatus" class="device-status-text" role="status" aria-live="polite" style="margin-top:4px"></div>
+            </div>
+
+            <div class="wallet-fund-card wallet-testmode-card">
+              <div class="wallet-testmode-row">
+                <div>
                   <div class="modal-label">Test mode</div>
                 </div>
                 <label class="wallet-toggle-switch" aria-label="Enable test mode">
@@ -1107,6 +1131,7 @@
                 <button id="walletResetButton" type="button" class="wallet-danger-btn">Delete wallet</button>
               </div>
             </div>
+
           </section>
         </div>
       </div>
@@ -1125,61 +1150,156 @@
     <div class="modal-backdrop" data-close-device-meta></div>
     <section class="modal-panel panel device-meta-panel" role="dialog" aria-modal="true" aria-labelledby="deviceMetaTitle">
       <div class="panel-head modal-head">
-        <div>
-          <h2 id="deviceMetaTitle">Device Identity</h2>
-          <div class="chat-subtitle">Edit metadata your node broadcasts to the mesh</div>
-        </div>
+        <h2 id="deviceMetaTitle">Device Settings</h2>
         <button id="deviceMetaClose" type="button" class="modal-close" aria-label="Close"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="1" y1="1" x2="11" y2="11"/><line x1="11" y1="1" x2="1" y2="11"/></svg></button>
       </div>
       <div class="device-meta-form">
-        <div class="device-meta-row">
-          <label class="device-meta-field" for="deviceMetaShortName">
-            <span class="device-meta-label">Short Name</span>
-            <input id="deviceMetaShortName" type="text" maxlength="4" autocomplete="off" spellcheck="false">
-          </label>
-          <label class="device-meta-field" for="deviceMetaLongName">
-            <span class="device-meta-label">Long Name</span>
-            <input id="deviceMetaLongName" type="text" maxlength="40" autocomplete="off" spellcheck="false">
-          </label>
+
+        <div class="device-meta-section">
+          <div class="device-meta-section-label">Identity</div>
+          <div class="device-meta-row">
+            <label class="device-meta-field" for="deviceMetaShortName">
+              <span class="device-meta-label">Short Name</span>
+              <input id="deviceMetaShortName" type="text" maxlength="4" autocomplete="off" spellcheck="false">
+            </label>
+            <label class="device-meta-field" for="deviceMetaLongName">
+              <span class="device-meta-label">Long Name</span>
+              <input id="deviceMetaLongName" type="text" maxlength="40" autocomplete="off" spellcheck="false">
+            </label>
+          </div>
+          <div class="device-meta-row">
+            <label class="device-meta-field" for="deviceMetaLat">
+              <span class="device-meta-label">Latitude</span>
+              <input id="deviceMetaLat" type="number" step="any" placeholder="e.g. 55.7558">
+            </label>
+            <label class="device-meta-field" for="deviceMetaLon">
+              <span class="device-meta-label">Longitude</span>
+              <input id="deviceMetaLon" type="number" step="any" placeholder="e.g. 37.6173">
+            </label>
+          </div>
         </div>
-        <div class="device-meta-row">
-          <label class="device-meta-field" for="deviceMetaLat">
-            <span class="device-meta-label">Latitude</span>
-            <input id="deviceMetaLat" type="number" step="any" placeholder="e.g. 55.7558">
-          </label>
-          <label class="device-meta-field" for="deviceMetaLon">
-            <span class="device-meta-label">Longitude</span>
-            <input id="deviceMetaLon" type="number" step="any" placeholder="e.g. 37.6173">
-          </label>
+
+        <div class="device-meta-section">
+          <div class="device-meta-section-label">LoRa Radio</div>
+          <div class="device-meta-row">
+            <label class="device-meta-field" for="deviceMetaModemPreset">
+              <span class="device-meta-label">Modem Preset</span>
+              <select id="deviceMetaModemPreset">
+                <option value="LONG_FAST">LongFast</option>
+                <option value="LONG_SLOW">LongSlow</option>
+                <option value="VERY_LONG_SLOW">VeryLongSlow</option>
+                <option value="MEDIUM_FAST">MedFast</option>
+                <option value="MEDIUM_SLOW">MedSlow</option>
+                <option value="SHORT_FAST">ShortFast</option>
+                <option value="SHORT_SLOW">ShortSlow</option>
+                <option value="LONG_MODERATE">LongModerate</option>
+                <option value="SHORT_TURBO">ShortTurbo</option>
+                <option value="LONG_TURBO">LongTurbo</option>
+              </select>
+            </label>
+            <label class="device-meta-field" for="deviceMetaRegion">
+              <span class="device-meta-label">Region</span>
+              <select id="deviceMetaRegion">
+                <option value="UNSET">Unset</option>
+                <option value="US">US</option>
+                <option value="EU_433">EU 433</option>
+                <option value="EU_868">EU 868</option>
+                <option value="CN">CN</option>
+                <option value="JP">JP</option>
+                <option value="ANZ">ANZ</option>
+                <option value="KR">KR</option>
+                <option value="TW">TW</option>
+                <option value="RU">RU</option>
+                <option value="IN">IN</option>
+                <option value="NZ_865">NZ 865</option>
+                <option value="TH">TH</option>
+                <option value="UA_433">UA 433</option>
+                <option value="UA_868">UA 868</option>
+                <option value="MY_433">MY 433</option>
+                <option value="MY_919">MY 919</option>
+                <option value="SG_923">SG 923</option>
+                <option value="LORA_24">LoRa 2.4GHz</option>
+              </select>
+            </label>
+          </div>
+          <div class="device-meta-row">
+            <label class="device-meta-field" for="deviceMetaMeshHopLimit">
+              <span class="device-meta-label">Hop Limit</span>
+              <input id="deviceMetaMeshHopLimit" type="number" min="0" max="7" step="1" placeholder="3">
+            </label>
+            <label class="device-meta-field" for="deviceMetaTxPower">
+              <span class="device-meta-label">TX Power (dBm)</span>
+              <input id="deviceMetaTxPower" type="number" min="0" max="30" step="1" placeholder="0 = max">
+            </label>
+          </div>
+          <div class="device-meta-row device-meta-row-with-action">
+            <label class="device-meta-field" for="deviceMetaNodeRole">
+              <span class="device-meta-label">Node Role</span>
+              <select id="deviceMetaNodeRole">
+                <option value="CLIENT">Client</option>
+                <option value="CLIENT_MUTE">Client Mute</option>
+                <option value="ROUTER">Router</option>
+                <option value="ROUTER_CLIENT">Router Client</option>
+                <option value="REPEATER">Repeater</option>
+                <option value="TRACKER">Tracker</option>
+                <option value="SENSOR">Sensor</option>
+                <option value="TAK">TAK</option>
+                <option value="CLIENT_HIDDEN">Client Hidden</option>
+                <option value="LOST_AND_FOUND">Lost &amp; Found</option>
+                <option value="TAK_TRACKER">TAK Tracker</option>
+              </select>
+            </label>
+            <div class="device-meta-field device-meta-field-btn">
+              <span class="device-meta-label">&nbsp;</span>
+              <button id="deviceResetNodeDb" type="button" class="btn-danger">Reset Node DB</button>
+            </div>
+          </div>
         </div>
-        <div class="device-meta-row">
-          <label class="device-meta-field" for="deviceMetaTakChannel">
-            <span class="device-meta-label">TAK Channel</span>
-            <input id="deviceMetaTakChannel" type="number" min="0" max="7" step="1" placeholder="0">
-          </label>
-          <label class="device-meta-field" for="deviceMetaTakHopLimit">
-            <span class="device-meta-label">TAK Hop Limit</span>
-            <input id="deviceMetaTakHopLimit" type="number" min="0" max="7" step="1" placeholder="3">
-          </label>
+
+        <div class="device-meta-section">
+          <div class="device-meta-section-label">TAK</div>
+          <div class="device-meta-row">
+            <label class="device-meta-field" for="deviceMetaTakChannel">
+              <span class="device-meta-label">Channel</span>
+              <input id="deviceMetaTakChannel" type="number" min="0" max="7" step="1" placeholder="0">
+            </label>
+            <label class="device-meta-field" for="deviceMetaTakHopLimit">
+              <span class="device-meta-label">Hop Limit</span>
+              <input id="deviceMetaTakHopLimit" type="number" min="0" max="7" step="1" placeholder="3">
+            </label>
+          </div>
         </div>
-        <label class="device-meta-field" for="deviceMetaModemPreset">
-          <span class="device-meta-label">LoRa Modem Preset</span>
-          <select id="deviceMetaModemPreset">
-            <option value="LONG_FAST">LongFast</option>
-            <option value="LONG_SLOW">LongSlow</option>
-            <option value="VERY_LONG_SLOW">VeryLongSlow</option>
-            <option value="MEDIUM_FAST">MedFast</option>
-            <option value="MEDIUM_SLOW">MedSlow</option>
-            <option value="SHORT_FAST">ShortFast</option>
-            <option value="SHORT_SLOW">ShortSlow</option>
-            <option value="LONG_MODERATE">LongModerate</option>
-            <option value="SHORT_TURBO">ShortTurbo</option>
-            <option value="LONG_TURBO">LongTurbo</option>
+
+        <div id="deviceMetaStatus" class="device-status-text"></div>
+        <div class="device-meta-actions">
+          <button id="deviceMetaLocate" type="button">Locate Device</button>
+          <button id="deviceMetaSave" type="button">Save to device</button>
+        </div>
+      </div>
+    </section>
+  </div>
+  <div id="deviceConnectModal" class="modal-shell hidden" aria-hidden="true">
+    <div class="modal-backdrop" data-close-device-connect></div>
+    <section class="modal-panel panel device-connect-panel" role="dialog" aria-modal="true" aria-labelledby="deviceConnectTitle">
+      <div class="panel-head modal-head">
+        <div>
+          <h2 id="deviceConnectTitle">Device Connection</h2>
+          <div class="chat-subtitle">Choose a serial port and reconnect Meshtastic</div>
+        </div>
+        <button id="deviceConnectClose" type="button" class="modal-close" aria-label="Close"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="1" y1="1" x2="11" y2="11"/><line x1="11" y1="1" x2="1" y2="11"/></svg></button>
+      </div>
+      <div class="device-connect-form">
+        <label class="device-meta-field" for="deviceConnectPortSelect">
+          <span class="device-meta-label">Serial Port</span>
+          <select id="deviceConnectPortSelect">
+            <option value="">Auto-detect (recommended)</option>
           </select>
         </label>
-        <div id="deviceMetaStatus" class="device-status-text"></div>
-        <button id="deviceMetaLocate" type="button">Locate Device</button>
-        <button id="deviceMetaSave" type="button">Save to device</button>
+        <div class="device-connect-actions">
+          <button id="deviceConnectRefresh" type="button">Refresh ports</button>
+          <button id="deviceConnectApply" type="button">Connect</button>
+        </div>
+        <div id="deviceConnectStatus" class="device-status-text" role="status" aria-live="polite"></div>
       </div>
     </section>
   </div>

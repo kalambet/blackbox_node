@@ -232,9 +232,20 @@ const deviceMetaLon = document.getElementById("deviceMetaLon");
 const deviceMetaTakChannel = document.getElementById("deviceMetaTakChannel");
 const deviceMetaTakHopLimit = document.getElementById("deviceMetaTakHopLimit");
 const deviceMetaModemPreset = document.getElementById("deviceMetaModemPreset");
+const deviceMetaMeshHopLimit = document.getElementById("deviceMetaMeshHopLimit");
+const deviceMetaRegion = document.getElementById("deviceMetaRegion");
+const deviceMetaTxPower = document.getElementById("deviceMetaTxPower");
+const deviceMetaNodeRole = document.getElementById("deviceMetaNodeRole");
 const deviceMetaStatus = document.getElementById("deviceMetaStatus");
 const deviceMetaSave = document.getElementById("deviceMetaSave");
 const deviceMetaLocate = document.getElementById("deviceMetaLocate");
+const deviceResetNodeDb = document.getElementById("deviceResetNodeDb");
+const deviceConnectModal = document.getElementById("deviceConnectModal");
+const deviceConnectClose = document.getElementById("deviceConnectClose");
+const deviceConnectPortSelect = document.getElementById("deviceConnectPortSelect");
+const deviceConnectRefresh = document.getElementById("deviceConnectRefresh");
+const deviceConnectApply = document.getElementById("deviceConnectApply");
+const deviceConnectStatus = document.getElementById("deviceConnectStatus");
 const chatChannelModal = document.getElementById("chatChannelModal");
 const chatChannelModalClose = document.getElementById("chatChannelModalClose");
 const chatChannelModalForm = document.getElementById("chatChannelModalForm");
@@ -1024,7 +1035,7 @@ function isPeerDmMessage(message, peerId) {
   if (direction === "in") {
     return isDirectMessage && sender === peerId;
   }
-  return recipient === peerId && sender === "local-ui";
+  return recipient === peerId && (sender === "local-ui" || sender === "local-wallet");
 }
 
 function isChannelThreadMessage(message, channelIndex) {
@@ -1883,6 +1894,10 @@ function openDeviceMetaModal() {
   if (deviceMetaTakChannel) deviceMetaTakChannel.value = "";
   if (deviceMetaTakHopLimit) deviceMetaTakHopLimit.value = "";
   if (deviceMetaModemPreset) deviceMetaModemPreset.value = "LONG_FAST";
+  if (deviceMetaMeshHopLimit) deviceMetaMeshHopLimit.value = "";
+  if (deviceMetaRegion) deviceMetaRegion.value = "UNSET";
+  if (deviceMetaTxPower) deviceMetaTxPower.value = "";
+  if (deviceMetaNodeRole) deviceMetaNodeRole.value = "CLIENT";
   fetchJson("/api/device-meta").then((data) => {
     deviceMetaShortName.value = data.shortName || "";
     deviceMetaLongName.value = data.longName || "";
@@ -1891,6 +1906,10 @@ function openDeviceMetaModal() {
     if (deviceMetaTakChannel) deviceMetaTakChannel.value = data.takChannel != null ? data.takChannel : 0;
     if (deviceMetaTakHopLimit) deviceMetaTakHopLimit.value = data.takHopLimit != null ? data.takHopLimit : 3;
     if (deviceMetaModemPreset) deviceMetaModemPreset.value = data.modemPreset || "LONG_FAST";
+    if (deviceMetaMeshHopLimit) deviceMetaMeshHopLimit.value = data.meshHopLimit != null ? data.meshHopLimit : "";
+    if (deviceMetaRegion) deviceMetaRegion.value = data.region || "UNSET";
+    if (deviceMetaTxPower) deviceMetaTxPower.value = data.txPower != null ? data.txPower : "";
+    if (deviceMetaNodeRole) deviceMetaNodeRole.value = data.nodeRole || "CLIENT";
     deviceMetaStatus.textContent = "";
   }).catch((err) => {
     deviceMetaStatus.textContent = `Load error: ${err.message}`;
@@ -1925,6 +1944,113 @@ async function loadMapNodeOnlineWindow() {
 function closeDeviceMetaModal() {
   deviceMetaModal.classList.add("hidden");
   deviceMetaModal.setAttribute("aria-hidden", "true");
+}
+
+function closeDeviceConnectModal() {
+  if (!deviceConnectModal) return;
+  deviceConnectModal.classList.add("hidden");
+  deviceConnectModal.setAttribute("aria-hidden", "true");
+}
+
+function describeSerialPortOption(port) {
+  const device = String(port?.device || "").trim();
+  const description = String(port?.description || port?.product || port?.manufacturer || "").trim();
+  const sourceTag = port?.isDetected ? "detected" : (port?.isFallback ? "fallback" : "serial");
+  const labelParts = [device];
+  if (description) labelParts.push(description);
+  labelParts.push(`[${sourceTag}]`);
+  return labelParts.join(" - ");
+}
+
+async function refreshDeviceConnectPorts(preferredPort = "") {
+  if (!deviceConnectPortSelect || !deviceConnectStatus || !deviceConnectRefresh || !deviceConnectApply) return;
+  deviceConnectStatus.textContent = "Scanning serial ports...";
+  deviceConnectRefresh.disabled = true;
+  deviceConnectApply.disabled = true;
+  try {
+    const payload = await fetchJson("/api/meshtastic/ports");
+    const ports = Array.isArray(payload.ports) ? payload.ports : [];
+    const selectedPort = String(preferredPort || payload.selectedPort || "").trim();
+    deviceConnectPortSelect.innerHTML = "";
+
+    const autoOption = document.createElement("option");
+    autoOption.value = "";
+    autoOption.textContent = "Auto-detect (recommended)";
+    deviceConnectPortSelect.appendChild(autoOption);
+
+    let selectedMatched = false;
+    ports.forEach((port) => {
+      const device = String(port?.device || "").trim();
+      if (!device) return;
+      const option = document.createElement("option");
+      option.value = device;
+      option.textContent = describeSerialPortOption(port);
+      const shouldSelect = (selectedPort && device === selectedPort) || (!selectedPort && Boolean(port?.isSelected));
+      if (shouldSelect) {
+        option.selected = true;
+        selectedMatched = true;
+      }
+      deviceConnectPortSelect.appendChild(option);
+    });
+
+    if (selectedPort && !selectedMatched) {
+      const savedOption = document.createElement("option");
+      savedOption.value = selectedPort;
+      savedOption.textContent = `${selectedPort} - saved`;
+      savedOption.selected = true;
+      deviceConnectPortSelect.appendChild(savedOption);
+      selectedMatched = true;
+    }
+
+    if (!selectedMatched) {
+      deviceConnectPortSelect.value = "";
+    }
+
+    if (!payload.ok) {
+      deviceConnectStatus.textContent = payload.error || "Port scan failed.";
+    } else if (!ports.length) {
+      deviceConnectStatus.textContent = "No serial ports found. Connect your device and refresh.";
+    } else {
+      deviceConnectStatus.textContent = selectedPort
+        ? `Saved port: ${selectedPort}. Select a port and click Connect.`
+        : "Select a port and click Connect.";
+    }
+  } catch (error) {
+    deviceConnectStatus.textContent = `Port scan failed: ${error.message}`;
+  } finally {
+    deviceConnectRefresh.disabled = false;
+    deviceConnectApply.disabled = false;
+  }
+}
+
+async function connectMeshtasticPortFromModal() {
+  if (!deviceConnectPortSelect || !deviceConnectStatus || !deviceConnectRefresh || !deviceConnectApply) return;
+  const port = String(deviceConnectPortSelect.value || "").trim();
+  deviceConnectStatus.textContent = port
+    ? `Connecting to ${port}...`
+    : "Connecting with auto-detect...";
+  deviceConnectRefresh.disabled = true;
+  deviceConnectApply.disabled = true;
+  try {
+    await fetchJson("/api/meshtastic/connect", {
+      method: "POST",
+      body: JSON.stringify({ port }),
+    });
+    await loadStatus();
+    closeDeviceConnectModal();
+  } catch (error) {
+    deviceConnectStatus.textContent = `Connect failed: ${error.message}`;
+  } finally {
+    deviceConnectRefresh.disabled = false;
+    deviceConnectApply.disabled = false;
+  }
+}
+
+async function openDeviceConnectModal() {
+  if (!deviceConnectModal) return;
+  deviceConnectModal.classList.remove("hidden");
+  deviceConnectModal.setAttribute("aria-hidden", "false");
+  await refreshDeviceConnectPorts();
 }
 
 function openWalletTestModeWarningModal() {
@@ -2521,6 +2647,9 @@ function setWalletView(viewName, options = {}) {
   if (viewName === "receive" && walletState.walletConfigured) {
     loadWalletQr();
   }
+  if (viewName === "settings") {
+    loadWalletClients();
+  }
 }
 
 
@@ -2615,6 +2744,7 @@ function renderNodes(nodes = [], meshLinks = []) {
     ? `<span class="nodes-online-dot"></span>${onlineCount}`
     : "";
   syncNodeSelectors();
+  syncWalletClientNodeSelect();
   nodesList.innerHTML = "";
   if (!nodes.length) {
     nodesList.innerHTML = '<div class="node-empty">No nodes yet</div>';
@@ -5510,6 +5640,7 @@ function renderDeviceStatus(status) {
   const connected = Boolean(mesh.connected);
   const isConnecting = !connected && ["starting", "detecting"].includes(String(mesh.mode || ""));
   const port = mesh.port ? ` on ${mesh.port}` : "";
+  const selectedPort = mesh.selectedPort ? String(mesh.selectedPort) : "";
   const takChannel = Number.isInteger(mesh.takChannel) ? mesh.takChannel : 0;
   const takHopLimit = Number.isInteger(mesh.takHopLimit) ? mesh.takHopLimit : 3;
   deviceStatus.className = `device-status ${connected ? "online" : (isConnecting ? "loading" : "offline")}`;
@@ -5518,9 +5649,16 @@ function renderDeviceStatus(status) {
     : (isConnecting ? `Connecting${port}` : "Device not connected");
   deviceStatusText.textContent = connected
     ? `Auto-connected at startup | TAK ch${takChannel} | hop ${takHopLimit}`
-    : (isConnecting ? "Link check in progress..." : (mesh.error || "Waiting for auto-connect"));
+    : (
+      isConnecting
+        ? "Link check in progress..."
+        : (mesh.error || (selectedPort ? `Saved port ${selectedPort} is unavailable.` : "Waiting for auto-connect."))
+    );
 
-  deviceStatus.style.cursor = connected ? "pointer" : "";
+  deviceStatus.style.cursor = connected || !isConnecting ? "pointer" : "";
+  deviceStatus.title = connected
+    ? "Click to edit device identity"
+    : (isConnecting ? "" : "Click to select serial port");
   latestMeshtasticConnected = connected;
   if (typeof status.meshAiReply === "boolean") {
     applyMeshAiReply(status.meshAiReply);
@@ -6320,6 +6458,106 @@ if (clearSwapsButton) {
 }
 
 // Settings mint button Р Р†Р вЂљРІР‚Сњ same API as Fund panel
+// External wallet clients
+const walletExternalClientsToggle = document.getElementById("walletExternalClientsToggle");
+const walletExternalClientsCard = document.getElementById("walletExternalClientsCard");
+const walletClientNodeSelect = document.getElementById("walletClientNodeSelect");
+const walletClientAddButton = document.getElementById("walletClientAddButton");
+const walletClientList = document.getElementById("walletClientList");
+const walletClientStatus = document.getElementById("walletClientStatus");
+
+let walletClients = [];
+let walletClientsEnabled = false;
+
+function renderWalletClients() {
+  if (!walletClientList) return;
+  walletClientList.innerHTML = "";
+  if (!walletClients.length) {
+    walletClientList.innerHTML = '<div class="wallet-hint">No approved clients.</div>';
+    return;
+  }
+  walletClients.forEach((nodeId) => {
+    const node = latestNodes.find((n) => (n.userId || n.id) === nodeId);
+    const label = node
+      ? `${node.shortName || node.longName || nodeId} (${nodeId})`
+      : nodeId;
+    const row = document.createElement("div");
+    row.className = "wallet-client-row";
+    row.innerHTML = `<span class="wallet-client-label">${label}</span><button type="button" class="wallet-inline-action wallet-client-remove" data-id="${nodeId}">Remove</button>`;
+    row.querySelector(".wallet-client-remove").addEventListener("click", async () => {
+      try {
+        const data = await fetchJson("/api/wallet-clients/remove", { method: "POST", body: JSON.stringify({ nodeId }) });
+        walletClients = data.clients;
+        renderWalletClients();
+      } catch (e) {
+        if (walletClientStatus) walletClientStatus.textContent = e.message;
+      }
+    });
+    walletClientList.appendChild(row);
+  });
+}
+
+function syncWalletClientNodeSelect() {
+  if (!walletClientNodeSelect) return;
+  const current = walletClientNodeSelect.value;
+  walletClientNodeSelect.innerHTML = '<option value="">Select a node...</option>';
+  latestNodes.forEach((n) => {
+    const id = n.userId || n.id;
+    if (!id || walletClients.includes(id)) return;
+    const label = `${n.shortName || n.longName || id} (${id})`;
+    const opt = document.createElement("option");
+    opt.value = id;
+    opt.textContent = label;
+    walletClientNodeSelect.appendChild(opt);
+  });
+  if (current) walletClientNodeSelect.value = current;
+}
+
+function applyWalletClientsEnabled() {
+  if (walletExternalClientsToggle) walletExternalClientsToggle.checked = walletClientsEnabled;
+  if (walletExternalClientsCard) walletExternalClientsCard.hidden = !walletClientsEnabled;
+}
+
+async function loadWalletClients() {
+  try {
+    const data = await fetchJson("/api/wallet-clients");
+    walletClients = data.clients || [];
+    walletClientsEnabled = Boolean(data.enabled);
+    applyWalletClientsEnabled();
+    renderWalletClients();
+    syncWalletClientNodeSelect();
+  } catch { /* ignore */ }
+}
+
+if (walletExternalClientsToggle) {
+  walletExternalClientsToggle.addEventListener("change", async () => {
+    const enabled = walletExternalClientsToggle.checked;
+    try {
+      await fetchJson("/api/wallet-clients/enabled", { method: "POST", body: JSON.stringify({ enabled }) });
+      walletClientsEnabled = enabled;
+      applyWalletClientsEnabled();
+    } catch (e) {
+      walletExternalClientsToggle.checked = !enabled;
+    }
+  });
+}
+
+if (walletClientAddButton) {
+  walletClientAddButton.addEventListener("click", async () => {
+    const nodeId = walletClientNodeSelect?.value;
+    if (!nodeId) { if (walletClientStatus) walletClientStatus.textContent = "Select a node first."; return; }
+    try {
+      const data = await fetchJson("/api/wallet-clients/add", { method: "POST", body: JSON.stringify({ nodeId }) });
+      walletClients = data.clients;
+      renderWalletClients();
+      syncWalletClientNodeSelect();
+      if (walletClientStatus) walletClientStatus.textContent = "";
+    } catch (e) {
+      if (walletClientStatus) walletClientStatus.textContent = e.message;
+    }
+  });
+}
+
 if (settingsSetMintButton) {
   settingsSetMintButton.addEventListener("click", async () => {
     const url = (settingsMintUrlInput?.value || "").trim();
@@ -6800,7 +7038,11 @@ if (walletTestModeWarningConfirm) {
   });
 }
 deviceStatus.addEventListener("click", () => {
-  if (latestMeshtasticConnected) openDeviceMetaModal();
+  if (latestMeshtasticConnected) {
+    openDeviceMetaModal();
+    return;
+  }
+  openDeviceConnectModal();
 });
 meshAiReplyToggle.addEventListener("click", () => {
   const next = meshAiReplyToggle.getAttribute("aria-pressed") !== "true";
@@ -6814,6 +7056,26 @@ deviceMetaModal.addEventListener("click", (event) => {
     closeDeviceMetaModal();
   }
 });
+if (deviceConnectClose) {
+  deviceConnectClose.addEventListener("click", closeDeviceConnectModal);
+}
+if (deviceConnectModal) {
+  deviceConnectModal.addEventListener("click", (event) => {
+    if (event.target.hasAttribute("data-close-device-connect")) {
+      closeDeviceConnectModal();
+    }
+  });
+}
+if (deviceConnectRefresh) {
+  deviceConnectRefresh.addEventListener("click", () => {
+    refreshDeviceConnectPorts(String(deviceConnectPortSelect?.value || "").trim()).catch(() => {});
+  });
+}
+if (deviceConnectApply) {
+  deviceConnectApply.addEventListener("click", () => {
+    connectMeshtasticPortFromModal().catch(() => {});
+  });
+}
 if (walletTestModeWarningModal) {
   walletTestModeWarningModal.addEventListener("click", (event) => {
     if (event.target.hasAttribute("data-close-wallet-testmode-warning")) {
@@ -6898,6 +7160,18 @@ deviceMetaSave.addEventListener("click", () => {
   if (deviceMetaModemPreset && deviceMetaModemPreset.value.trim() !== "") {
     payload.modemPreset = deviceMetaModemPreset.value.trim();
   }
+  if (deviceMetaMeshHopLimit && deviceMetaMeshHopLimit.value.trim() !== "") {
+    payload.meshHopLimit = parseInt(deviceMetaMeshHopLimit.value, 10);
+  }
+  if (deviceMetaRegion && deviceMetaRegion.value.trim() !== "") {
+    payload.region = deviceMetaRegion.value.trim();
+  }
+  if (deviceMetaTxPower && deviceMetaTxPower.value.trim() !== "") {
+    payload.txPower = parseInt(deviceMetaTxPower.value, 10);
+  }
+  if (deviceMetaNodeRole && deviceMetaNodeRole.value.trim() !== "") {
+    payload.nodeRole = deviceMetaNodeRole.value.trim();
+  }
   fetchJson("/api/device-meta", { method: "POST", body: JSON.stringify(payload) }).then(() => {
     deviceMetaStatus.textContent = "Saved.";
   }).catch((err) => {
@@ -6906,6 +7180,19 @@ deviceMetaSave.addEventListener("click", () => {
     deviceMetaSave.disabled = false;
   });
 });
+if (deviceResetNodeDb) {
+  deviceResetNodeDb.addEventListener("click", () => {
+    deviceMetaStatus.textContent = "Resetting node DB...";
+    deviceResetNodeDb.disabled = true;
+    fetchJson("/api/reset-node-db", { method: "POST" }).then(() => {
+      deviceMetaStatus.textContent = "Node DB reset.";
+    }).catch((err) => {
+      deviceMetaStatus.textContent = `Error: ${err.message}`;
+    }).finally(() => {
+      deviceResetNodeDb.disabled = false;
+    });
+  });
+}
 modelManagerModal.addEventListener("click", (event) => {
   if (event.target.hasAttribute("data-close-model-manager")) {
     closeModelManager();
@@ -7041,6 +7328,10 @@ document.addEventListener("keydown", (event) => {
     closeNodeModal();
     return;
   }
+  if (event.key === "Escape" && deviceConnectModal && !deviceConnectModal.classList.contains("hidden")) {
+    closeDeviceConnectModal();
+    return;
+  }
   if (event.key === "Escape" && !deviceMetaModal.classList.contains("hidden")) {
     closeDeviceMetaModal();
   }
@@ -7164,6 +7455,7 @@ loadStatus();
 loadMessages();
 loadLogs();
 loadNodes();
+loadWalletClients();
 connectEvents();
 
 if ("serviceWorker" in navigator) {
