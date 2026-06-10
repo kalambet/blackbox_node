@@ -91,6 +91,13 @@
             <div class="node-empty">No nodes yet</div>
           </div>
         </section>
+        <div
+          id="leftColumnResizeHandle"
+          class="panel-resize-handle"
+          role="separator"
+          aria-orientation="horizontal"
+          aria-label="Resize nodes and log panels"
+        ></div>
         <section class="panel log-panel">
           <div class="panel-head">
             <h2>Log</h2>
@@ -149,6 +156,12 @@
                       <div class="chat-peer-empty">No nodes found</div>
                     </div>
                   </div>
+                  <button id="chatPeerLocateButton" type="button" class="chat-peer-icon-btn" title="Locate on map" aria-label="Locate node on map" disabled>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="10" r="3"/><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg>
+                  </button>
+                  <button id="chatPeerInfoButton" type="button" class="chat-peer-icon-btn" title="Node details" aria-label="Show node details" disabled>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                  </button>
                 </div>
               </div>
             </div>
@@ -203,6 +216,15 @@
                     <span class="chat-command-item-name">/battery</span>
                     <span class="chat-command-item-desc">AI battery summary across nodes</span>
                   </button>
+                  <button type="button" class="chat-command-item" data-chat-command="/nodecheck">
+                    <span class="chat-command-item-name">/nodecheck</span>
+                    <span class="chat-command-item-desc">AI health check for a specific node</span>
+                  </button>
+                </div>
+                <div id="nodecheckPicker" class="nodepick-modal" hidden>
+                  <div class="nodepick-header">Select node to analyze</div>
+                  <input id="nodecheckSearch" type="text" class="nodepick-search" placeholder="Filter by name or ID…" autocomplete="off">
+                  <div id="nodecheckList" class="nodepick-list"></div>
                 </div>
               </div>
               <button type="submit" class="chat-send-button" title="Send" aria-label="Send message">
@@ -258,6 +280,12 @@
           <div id="nodeModalSubtitle" class="chat-subtitle">Snapshot</div>
         </div>
         <div class="node-modal-head-actions">
+          <button id="nodeModalFavoriteButton" type="button" class="node-modal-action-btn node-favorite-button" aria-pressed="false">
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+              <path d="M12 3l2.7 5.5 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.8 1-6.1-4.4-4.3 6.1-.9L12 3z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+            </svg>
+            Favorite
+          </button>
           <button id="nodeModalPositionButton" type="button" class="node-modal-action-btn">
             <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
               <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.5"/>
@@ -1149,40 +1177,41 @@
   <div id="deviceMetaModal" class="modal-shell hidden" aria-hidden="true">
     <div class="modal-backdrop" data-close-device-meta></div>
     <section class="modal-panel panel device-meta-panel" role="dialog" aria-modal="true" aria-labelledby="deviceMetaTitle">
-      <div class="panel-head modal-head">
-        <h2 id="deviceMetaTitle">Device Settings</h2>
+      <div class="panel-head modal-head device-meta-head">
+        <div>
+          <h2 id="deviceMetaTitle">Device Settings</h2>
+          <div class="chat-subtitle">Radio identity, LoRa profile, TAK routing, and serial connection</div>
+        </div>
         <button id="deviceMetaClose" type="button" class="modal-close" aria-label="Close"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="1" y1="1" x2="11" y2="11"/><line x1="11" y1="1" x2="1" y2="11"/></svg></button>
       </div>
       <div class="device-meta-form">
 
         <div class="device-meta-section">
           <div class="device-meta-section-label">Identity</div>
-          <div class="device-meta-row">
+          <div class="device-meta-row device-meta-row-4">
             <label class="device-meta-field" for="deviceMetaShortName">
               <span class="device-meta-label">Short Name</span>
               <input id="deviceMetaShortName" type="text" maxlength="4" autocomplete="off" spellcheck="false">
             </label>
-            <label class="device-meta-field" for="deviceMetaLongName">
+            <label class="device-meta-field device-meta-field-wide" for="deviceMetaLongName">
               <span class="device-meta-label">Long Name</span>
               <input id="deviceMetaLongName" type="text" maxlength="40" autocomplete="off" spellcheck="false">
             </label>
-          </div>
-          <div class="device-meta-row">
             <label class="device-meta-field" for="deviceMetaLat">
               <span class="device-meta-label">Latitude</span>
-              <input id="deviceMetaLat" type="number" step="any" placeholder="e.g. 55.7558">
+              <input id="deviceMetaLat" type="number" step="any" placeholder="55.7558">
             </label>
             <label class="device-meta-field" for="deviceMetaLon">
               <span class="device-meta-label">Longitude</span>
-              <input id="deviceMetaLon" type="number" step="any" placeholder="e.g. 37.6173">
+              <input id="deviceMetaLon" type="number" step="any" placeholder="37.6173">
             </label>
           </div>
         </div>
 
         <div class="device-meta-section">
           <div class="device-meta-section-label">LoRa Radio</div>
-          <div class="device-meta-row">
-            <label class="device-meta-field" for="deviceMetaModemPreset">
+          <div class="device-meta-row device-meta-row-4">
+            <label class="device-meta-field device-meta-field-wide" for="deviceMetaModemPreset">
               <span class="device-meta-label">Modem Preset</span>
               <select id="deviceMetaModemPreset">
                 <option value="LONG_FAST">LongFast</option>
@@ -1197,7 +1226,7 @@
                 <option value="LONG_TURBO">LongTurbo</option>
               </select>
             </label>
-            <label class="device-meta-field" for="deviceMetaRegion">
+            <label class="device-meta-field device-meta-field-wide" for="deviceMetaRegion">
               <span class="device-meta-label">Region</span>
               <select id="deviceMetaRegion">
                 <option value="UNSET">Unset</option>
@@ -1221,18 +1250,16 @@
                 <option value="LORA_24">LoRa 2.4GHz</option>
               </select>
             </label>
-          </div>
-          <div class="device-meta-row">
             <label class="device-meta-field" for="deviceMetaMeshHopLimit">
               <span class="device-meta-label">Hop Limit</span>
               <input id="deviceMetaMeshHopLimit" type="number" min="0" max="7" step="1" placeholder="3">
             </label>
             <label class="device-meta-field" for="deviceMetaTxPower">
-              <span class="device-meta-label">TX Power (dBm)</span>
-              <input id="deviceMetaTxPower" type="number" min="0" max="30" step="1" placeholder="0 = max">
+              <span class="device-meta-label">TX Power</span>
+              <input id="deviceMetaTxPower" type="number" min="0" max="30" step="1" placeholder="0=max">
             </label>
           </div>
-          <div class="device-meta-row device-meta-row-with-action">
+          <div class="device-meta-role-row">
             <label class="device-meta-field" for="deviceMetaNodeRole">
               <span class="device-meta-label">Node Role</span>
               <select id="deviceMetaNodeRole">
@@ -1249,29 +1276,46 @@
                 <option value="TAK_TRACKER">TAK Tracker</option>
               </select>
             </label>
-            <div class="device-meta-field device-meta-field-btn">
-              <span class="device-meta-label">&nbsp;</span>
-              <button id="deviceResetNodeDb" type="button" class="btn-danger">Reset Node DB</button>
+            <button id="deviceResetNodeDb" type="button" class="btn-danger">Reset Node DB</button>
+          </div>
+        </div>
+
+        <div class="device-meta-section device-meta-section-inline">
+          <div class="device-meta-inline-group device-meta-tak-group">
+            <div class="device-meta-section-label">TAK</div>
+            <div class="device-meta-tak-row">
+              <label class="device-meta-field" for="deviceMetaTakChannel">
+                <span class="device-meta-label">Channel</span>
+                <input id="deviceMetaTakChannel" type="number" min="0" max="7" step="1" placeholder="0">
+              </label>
+              <label class="device-meta-field" for="deviceMetaTakHopLimit">
+                <span class="device-meta-label">Hop Limit</span>
+                <input id="deviceMetaTakHopLimit" type="number" min="0" max="7" step="1" placeholder="3">
+              </label>
             </div>
           </div>
-        </div>
-
-        <div class="device-meta-section">
-          <div class="device-meta-section-label">TAK</div>
-          <div class="device-meta-row">
-            <label class="device-meta-field" for="deviceMetaTakChannel">
-              <span class="device-meta-label">Channel</span>
-              <input id="deviceMetaTakChannel" type="number" min="0" max="7" step="1" placeholder="0">
-            </label>
-            <label class="device-meta-field" for="deviceMetaTakHopLimit">
-              <span class="device-meta-label">Hop Limit</span>
-              <input id="deviceMetaTakHopLimit" type="number" min="0" max="7" step="1" placeholder="3">
-            </label>
+          <div class="device-meta-inline-group">
+            <div class="device-meta-section-label">Connection</div>
+            <div class="device-meta-port-row">
+              <label class="device-meta-field" for="deviceMetaPortSelect">
+                <span class="device-meta-label">Serial Port</span>
+                <select id="deviceMetaPortSelect">
+                  <option value="">Auto-detect</option>
+                </select>
+              </label>
+              <button id="deviceMetaPortRefresh" type="button" class="device-meta-port-btn" title="Refresh ports" aria-label="Refresh ports">
+                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5A4.5 4.5 0 1 0 11 7"/><path d="M10 1v2.5H7.5"/></svg>
+              </button>
+              <button id="deviceMetaPortConnect" type="button" class="device-meta-port-btn" title="Reconnect">
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="1" y1="6" x2="10" y2="6"/><polyline points="7,3 10,6 7,9"/></svg>
+              </button>
+            </div>
+            <div id="deviceMetaPortStatus" class="device-status-text" role="status" aria-live="polite"></div>
           </div>
         </div>
 
-        <div id="deviceMetaStatus" class="device-status-text"></div>
         <div class="device-meta-actions">
+          <div id="deviceMetaStatus" class="device-status-text" role="status" aria-live="polite"></div>
           <button id="deviceMetaLocate" type="button">Locate Device</button>
           <button id="deviceMetaSave" type="button">Save to device</button>
         </div>

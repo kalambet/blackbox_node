@@ -407,6 +407,26 @@ function getWalletExternalClients() {
   return Array.isArray(appSettings.walletExternalClients) ? appSettings.walletExternalClients : [];
 }
 
+function getFavoriteNodes() {
+  return Array.isArray(appSettings.favoriteNodes) ? appSettings.favoriteNodes : [];
+}
+
+function isFavoriteNode(nodeId) {
+  const id = String(nodeId || "").trim();
+  return Boolean(id && getFavoriteNodes().includes(id));
+}
+
+function setFavoriteNode(nodeId, favorite) {
+  const id = String(nodeId || "").trim();
+  if (!id) throw new Error("nodeId required");
+  const current = getFavoriteNodes();
+  appSettings.favoriteNodes = favorite
+    ? (current.includes(id) ? current : [...current, id])
+    : current.filter((n) => n !== id);
+  persistSettings();
+  return appSettings.favoriteNodes;
+}
+
 function addWalletExternalClient(nodeId) {
   const id = String(nodeId || "").trim();
   if (!id) throw new Error("nodeId required");
@@ -1847,11 +1867,25 @@ async function cashuSwapPending() {
   const wallet = new Wallet(cd.mintUrl, { unit: "sat" });
   await wallet.loadMint(true);
 
+  function isSpentLikeError(errorMessage) {
+    const msg = String(errorMessage || "").toLowerCase();
+    return msg.includes("spent") || msg.includes("redeem") || msg.includes("already used");
+  }
+
   // Re-encode pending proofs as a token and receive them (= swap at mint)
   const tokenObj = { mint: cd.mintUrl, proofs: pending, unit: "sat" };
-  const receiveResult = await wallet.receive(tokenObj);
-  const batchHasErrors = receiveResultHasErrors(receiveResult);
-  let freshProofs = extractFreshProofsFromReceiveResult(receiveResult);
+  let batchHasErrors = true;
+  let freshProofs = [];
+  try {
+    const receiveResult = await wallet.receive(tokenObj);
+    batchHasErrors = receiveResultHasErrors(receiveResult);
+    freshProofs = extractFreshProofsFromReceiveResult(receiveResult);
+  } catch (err) {
+    if (isLikelyCashuNetworkError(err)) {
+      throw new Error("Mint is unreachable. Reconnect internet to confirm pending proofs.");
+    }
+    console.warn("[cashu] Batch pending proof confirmation failed, trying individually:", err?.message || err);
+  }
 
   // Some mints return partial failures for mixed pending sets. Salvage what can be
   // reissued proof-by-proof. Never drop unresolved proofs to avoid silent loss.
@@ -1860,11 +1894,6 @@ async function cashuSwapPending() {
     const droppedSpent = [];
     const maybeSpent = [];
     const unresolved = [];
-
-    function isSpentLikeError(errorMessage) {
-      const msg = String(errorMessage || "").toLowerCase();
-      return msg.includes("spent") || msg.includes("redeem") || msg.includes("already used");
-    }
 
     for (const proof of pending) {
       try {
@@ -1892,15 +1921,10 @@ async function cashuSwapPending() {
     if (maybeSpent.length > 0) {
       try {
         const spentStates = await wallet.checkProofsStates(maybeSpent);
-        const spentSecrets = new Set(
-          spentStates
-            .filter((s) => String(s?.state || "").toUpperCase() === "SPENT")
-            .map((s) => String(s?.secret || ""))
-            .filter(Boolean)
-        );
-        for (const proof of maybeSpent) {
-          const secret = String(proof?.secret || "");
-          if (secret && spentSecrets.has(secret)) {
+        for (let i = 0; i < maybeSpent.length; i += 1) {
+          const proof = maybeSpent[i];
+          const state = String(spentStates?.[i]?.state || "").toUpperCase();
+          if (state === "SPENT") {
             droppedSpent.push(proof);
           } else {
             unresolved.push(proof);
@@ -2438,6 +2462,8 @@ function buildSummaryCommandContext() {
       hopsAway: node.hopsAway ?? null,
       neighborCount: Array.isArray(node.neighbors) ? node.neighbors.length : 0,
       observedPorts: Array.isArray(node.observedPortnums) ? node.observedPortnums : [],
+      uptimeSeconds: node.deviceMetrics?.uptimeSeconds ?? node.lastDecoded?.deviceMetrics?.uptimeSeconds ?? null,
+      temperature: node.environmentMetrics?.temperature ?? node.lastDecoded?.environmentMetrics?.temperature ?? null,
       weather: summarizeNodeWeather(node),
     })),
   };
@@ -2582,10 +2608,62 @@ function parseLocalSlashCommand(prompt) {
     return null;
   }
   const command = normalized.split(/\s+/, 1)[0].toLowerCase();
-  if (command === "/summary" || command === "/weather" || command === "/activity" || command === "/battery") {
+  if (command === "/help" || command === "/summary" || command === "/weather" || command === "/activity" || command === "/battery" || command === "/nodecheck") {
     return { name: command, raw: normalized };
   }
   return null;
+}
+
+function buildNodeCheckContext(nodeArg) {
+  const q = String(nodeArg || "").trim().toLowerCase();
+  if (!q) return { error: "No node specified" };
+  const node = Object.values(knownNodes).find((n) =>
+    (n.shortName || "").toLowerCase().includes(q) ||
+    (n.longName  || "").toLowerCase().includes(q) ||
+    (n.userId    || "").toLowerCase() === q ||
+    (n.id        || "").toLowerCase() === q
+  );
+  if (!node) return { error: "Node not found", query: nodeArg };
+  const now = Date.now();
+  const lastSeen = node.lastSeenAt || node.lastHeard || null;
+  const ageSec = lastSeen ? Math.round((now - new Date(lastSeen).getTime()) / 1000) : null;
+  const metrics = node.deviceMetrics || node.lastDecoded?.deviceMetrics || {};
+  return {
+    identity: {
+      id: node.id,
+      userId: node.userId,
+      shortName: node.shortName,
+      longName: node.longName,
+      role: node.role,
+      meshtasticRole: node.meshtasticRole,
+      hardware: node.hardware,
+      modemPreset: node.modemPreset,
+      region: node.region,
+    },
+    status: {
+      online: isNodeOnline(node),
+      live: Array.isArray(node.observedPortnums) && node.observedPortnums.length > 0,
+      lastSeen: lastSeen,
+      ageSeconds: ageSec,
+      hopsAway: node.hopsAway ?? null,
+      snr: node.snr ?? null,
+    },
+    power: {
+      batteryLevel: metrics.batteryLevel ?? node.batteryLevel ?? null,
+      voltage: metrics.voltage ?? node.voltage ?? null,
+    },
+    position: {
+      latitude: node.latitude ?? null,
+      longitude: node.longitude ?? null,
+      altitude: node.altitude ?? null,
+    },
+    environment: node.environmentMetrics || null,
+    activity: {
+      observedPortnums: node.observedPortnums || [],
+      lastDecoded: node.lastDecoded || null,
+    },
+    neighbors: (node.neighbors || []).map((n) => ({ nodeId: n.nodeId, snr: n.snr })),
+  };
 }
 
 function buildSlashCommandSystemPrompt(commandName) {
@@ -2618,6 +2696,15 @@ function buildSlashCommandSystemPrompt(commandName) {
       "Reply in the same language as the user if it is evident; otherwise use English.",
     ].join(" ");
   }
+  if (commandName === "/nodecheck") {
+    return [
+      "You are an operations assistant for an offline Meshtastic network dashboard.",
+      "You are given full telemetry for a single node.",
+      "Give a concise health assessment covering: signal quality (SNR, hops), battery/voltage, last seen time, sensor/environment data if present, neighbors.",
+      "Flag anything unusual or worth attention. Summarize only the supplied data — do not invent metrics.",
+      "Reply in the same language as the user if it is evident; otherwise use English.",
+    ].join(" ");
+  }
   return [
     "You are an operations assistant for an offline Meshtastic network dashboard.",
     "You are given structured telemetry about node presence, activity, battery state, and recent message flow.",
@@ -2629,6 +2716,9 @@ function buildSlashCommandSystemPrompt(commandName) {
 }
 
 function buildSlashCommandFallback(commandName, context) {
+  if (commandName === "/help") {
+    return "/summary - network stats\n/weather - conditions\n/activity - recent events\n/battery - power levels\n/nodecheck <name> - node status\n/wallet - balance\nsend <amount> <node> - send Cashu";
+  }
   if (commandName === "/weather") {
     if (!context.weather.totalSources) {
       return "No weather telemetry available yet. No fresh or historical node weather data was found.";
@@ -2675,20 +2765,46 @@ function buildSlashCommandFallback(commandName, context) {
     );
   }
 
-  const lowBattery = context.lowBatteryNodes.length
-    ? `Low battery: ${context.lowBatteryNodes.map((node) => `${node.name} ${node.batteryLevel}%`).join(", ")}.`
-    : "No low-battery nodes flagged.";
-  const stale = context.staleNodes.length
-    ? `Stale telemetry: ${context.staleNodes.map((node) => `${node.name} (${node.age})`).join(", ")}.`
-    : "No major telemetry staleness detected.";
+  if (commandName === "/nodecheck") {
+    if (context.error) return `Node check: ${context.error}${context.query ? ` ("${context.query}")` : ""}.`;
+    const id = context.identity;
+    const st = context.status;
+    const pw = context.power;
+    const parts = [
+      `${id.longName || id.shortName || id.userId} (${id.userId})`,
+      st.online ? "online" : "offline",
+      st.ageSeconds != null ? `last seen ${Math.round(st.ageSeconds / 60)}m ago` : null,
+      st.snr != null ? `SNR ${st.snr} dB` : null,
+      st.hopsAway != null ? `${st.hopsAway} hop(s)` : null,
+      pw.batteryLevel != null ? `battery ${pw.batteryLevel}%` : null,
+    ];
+    return trimResponse(parts.filter(Boolean).join(", ") + ".");
+  }
+
+  const temps = context.nodes.map((n) => n.temperature).filter((t) => t != null).map(Number);
+  const avgTemp = temps.length ? (temps.reduce((a, b) => a + b, 0) / temps.length).toFixed(1) : null;
+  const minTemp = temps.length ? Math.min(...temps).toFixed(1) : null;
+  const maxTemp = temps.length ? Math.max(...temps).toFixed(1) : null;
+  const tempLine = avgTemp != null
+    ? `Avg temperature ${avgTemp}°C (min ${minTemp}°C, max ${maxTemp}°C across ${temps.length} sensor(s)).`
+    : null;
+  const lowBatteryCount = context.lowBatteryNodes.length;
+  const staleCount = context.staleNodes.length;
   return trimResponse(
-    `${context.network.totalNodes} nodes known, ${context.network.onlineNodes} online, ${context.network.offlineNodes} offline. ` +
-    `Network health looks ${context.network.health}. Approximate activity is ${context.network.approxLoad} based on ${context.activity.totalEvents} recent events in the last ${context.activity.windowMinutes} minutes. ` +
-    `${lowBattery} ${stale}`
+    [
+      `${context.network.onlineNodes}/${context.network.totalNodes} nodes online, ${context.network.offlineNodes} offline.`,
+      `Network health: ${context.network.health}. Activity: ${context.network.approxLoad} — ${context.activity.totalEvents} events in the last ${context.activity.windowMinutes} min (telemetry: ${context.activity.telemetryEvents}, messages: ${context.activity.meshMessages}, DMs: ${context.activity.directMessages}).`,
+      tempLine,
+      lowBatteryCount ? `${lowBatteryCount} node(s) low battery.` : "Battery OK.",
+      staleCount ? `${staleCount} node(s) with stale telemetry.` : null,
+    ].filter(Boolean).join(" ")
   );
 }
 
 async function generateSlashCommandReply(peerId, slashCommand) {
+  if (slashCommand.name === "/help") {
+    return buildSlashCommandFallback("/help", {});
+  }
   const aiSettings = getAiSettingsPayload();
   let context;
   if (slashCommand.name === "/weather") {
@@ -2697,6 +2813,12 @@ async function generateSlashCommandReply(peerId, slashCommand) {
     context = buildActivityCommandContext();
   } else if (slashCommand.name === "/battery") {
     context = buildBatteryCommandContext();
+  } else if (slashCommand.name === "/nodecheck") {
+    const nodeArg = slashCommand.raw.slice("/nodecheck".length).trim();
+    context = buildNodeCheckContext(nodeArg);
+    if (context.error) {
+      return buildSlashCommandFallback(slashCommand.name, context);
+    }
   } else {
     context = buildSummaryCommandContext();
   }
@@ -2717,7 +2839,7 @@ async function generateSlashCommandReply(peerId, slashCommand) {
         ],
         temperature: Math.min(aiSettings.localTemperature, 0.3),
         top_p: aiSettings.localTopP,
-        max_tokens: Math.min(aiSettings.localMaxTokens, 320),
+        max_tokens: Math.min(aiSettings.localMaxTokens, slashCommand.name === "/nodecheck" ? 400 : 320),
         stream: false,
       }),
     });
@@ -2803,7 +2925,7 @@ function clearMessages(scope, peerId = "", channelIndex = null) {
         return !(sender === normalizedPeerId && recipient === "local-ai");
       }
       if (direction === "out") {
-        return !(sender === "local-ui" && recipient === normalizedPeerId);
+        return !((sender === "local-ui" || sender === "local-wallet") && recipient === normalizedPeerId);
       }
       return true;
     });
@@ -3020,17 +3142,25 @@ function getNodesPayload() {
   return {
     nodes: nodes
       .sort((a, b) => {
+        const aId = String(a.userId || a.id || "").trim();
+        const bId = String(b.userId || b.id || "").trim();
+        const aFavorite = isFavoriteNode(aId) ? 1 : 0;
+        const bFavorite = isFavoriteNode(bId) ? 1 : 0;
+        if (aFavorite !== bFavorite) {
+          return bFavorite - aFavorite;
+        }
         const aOnline = isNodeOnline(a) ? 1 : 0;
         const bOnline = isNodeOnline(b) ? 1 : 0;
         if (aOnline !== bOnline) {
           return bOnline - aOnline;
         }
-        return String(a.userId || a.id).localeCompare(String(b.userId || b.id));
+        return aId.localeCompare(bId);
       })
       .map((node) => ({
         ...node,
         online: isNodeOnline(node),
         live: Array.isArray(node.observedPortnums) && node.observedPortnums.length > 0,
+        favorite: isFavoriteNode(node.userId || node.id),
       })),
     meshLinks: activeLinks,
   };
@@ -5579,6 +5709,18 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 200, getNodesPayload());
     }
 
+    if (req.method === "POST" && req.url === "/api/node-favorite") {
+      const body = await readJson(req);
+      try {
+        const nodeId = String(body.nodeId || "").trim();
+        const favorites = setFavoriteNode(nodeId, Boolean(body.favorite));
+        broadcast("nodes", getNodesPayload());
+        return sendJson(res, 200, { ok: true, nodeId, favorite: isFavoriteNode(nodeId), favorites });
+      } catch (e) {
+        return sendJson(res, 400, { error: e.message });
+      }
+    }
+
     if (req.method === "GET" && req.url === "/api/device-meta") {
       const localNode = localMeshNodeId
         ? Object.values(knownNodes).find((n) => String(n.meshNum) === localMeshNodeId)
@@ -5661,21 +5803,34 @@ const server = http.createServer(async (req, res) => {
       }
       return sendJson(res, 200, {
         id,
+        meshNum: node.meshNum || null,
         userId: node.userId || node.id,
         shortName: node.shortName || "",
         longName: node.longName || "",
         role: node.role || "generic",
+        hardware: node.hardware || "",
         meshtasticRole: node.meshtasticRole || "",
+        nodeRole: node.nodeRole || "",
         modemPreset: node.modemPreset || "",
+        meshHopLimit: node.meshHopLimit ?? null,
+        region: node.region || "",
+        txPower: node.txPower ?? null,
         lastHeard: node.lastHeard || null,
         snr: node.snr ?? null,
         hopsAway: node.hopsAway ?? null,
+        batteryLevel: node.batteryLevel ?? null,
+        voltage: node.voltage ?? null,
+        latitude: node.latitude ?? null,
+        longitude: node.longitude ?? null,
+        networkSource: node.networkSource || "local",
         environmentMetrics: node.environmentMetrics || null,
         neighbors: node.neighbors || [],
         online: isNodeOnline(node),
         live: Array.isArray(node.observedPortnums) && node.observedPortnums.length > 0,
+        favorite: isFavoriteNode(node.userId || node.id || id),
         observedPortnums: node.observedPortnums || [],
         lastDecoded: node.lastDecoded || null,
+        weather: node.weather || null,
         raw: node.raw || null,
         lastPacket: node.lastPacket || null,
       });

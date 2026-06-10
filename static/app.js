@@ -9,6 +9,9 @@ const openAiSettingsButton = document.getElementById("openAiSettingsButton");
 const openHelpButton = document.getElementById("openHelpButton");
 const openWalletButton = document.getElementById("openWalletButton");
 const nodesList = document.getElementById("nodesList");
+const nodesPanel = document.querySelector(".nodes-panel");
+const leftColumn = document.querySelector(".left-column");
+const leftColumnResizeHandle = document.getElementById("leftColumnResizeHandle");
 const clearLogButton = document.getElementById("clearLogButton");
 const copyAllLogButton = document.getElementById("copyAllLogButton");
 const chatForm = document.getElementById("chatForm");
@@ -29,6 +32,8 @@ const chatPeerDropdown = document.getElementById("chatPeerDropdown");
 const chatPeerTrigger = document.getElementById("chatPeerTrigger");
 const chatPeerLabel = document.getElementById("chatPeerLabel");
 const chatPeerCashuButton = document.getElementById("chatPeerCashuButton");
+const chatPeerLocateButton = document.getElementById("chatPeerLocateButton");
+const chatPeerInfoButton = document.getElementById("chatPeerInfoButton");
 const chatPeerFilterButtons = Array.from(document.querySelectorAll("[data-chat-peer-filter]"));
 const chatChannelRow = document.getElementById("chatChannelRow");
 const chatChannelSelect = document.getElementById("chatChannelSelect");
@@ -47,6 +52,7 @@ const openNodesMapButton = document.getElementById("openNodesMapButton");
 const nodeModal = document.getElementById("nodeModal");
 const nodeModalClose = document.getElementById("nodeModalClose");
 const nodeModalDot = document.getElementById("nodeModalDot");
+const nodeModalFavoriteButton = document.getElementById("nodeModalFavoriteButton");
 const nodeModalPositionButton = document.getElementById("nodeModalPositionButton");
 const nodeModalChatButton = document.getElementById("nodeModalChatButton");
 const nodeModalSendButton = document.getElementById("nodeModalSendButton");
@@ -240,6 +246,10 @@ const deviceMetaStatus = document.getElementById("deviceMetaStatus");
 const deviceMetaSave = document.getElementById("deviceMetaSave");
 const deviceMetaLocate = document.getElementById("deviceMetaLocate");
 const deviceResetNodeDb = document.getElementById("deviceResetNodeDb");
+const deviceMetaPortSelect = document.getElementById("deviceMetaPortSelect");
+const deviceMetaPortRefresh = document.getElementById("deviceMetaPortRefresh");
+const deviceMetaPortConnect = document.getElementById("deviceMetaPortConnect");
+const deviceMetaPortStatus = document.getElementById("deviceMetaPortStatus");
 const deviceConnectModal = document.getElementById("deviceConnectModal");
 const deviceConnectClose = document.getElementById("deviceConnectClose");
 const deviceConnectPortSelect = document.getElementById("deviceConnectPortSelect");
@@ -308,7 +318,7 @@ const CHAT_CHANNELS_STORAGE_KEY = "blackbox.chat.channels";
 const CHAT_PLACEHOLDER_AI = "Write a message. Enter to send, Shift+Enter for new line.";
 const CHAT_PLACEHOLDER_DM = "Write a DM to selected node. Enter to send, Shift+Enter for new line.";
 const CHAT_PLACEHOLDER_CHANS = "Write a channel message. Enter to send, Shift+Enter for new line.";
-const CHAT_AI_COMMANDS = new Set(["/summary", "/weather", "/activity", "/battery"]);
+const CHAT_AI_COMMANDS = new Set(["/summary", "/weather", "/activity", "/battery", "/nodecheck"]);
 const DEFAULT_CHAT_CHANNELS = [
   { id: "primary", name: "Primary Channel", channelIndex: 0 },
 ];
@@ -453,9 +463,64 @@ function applyAiSlashCommand(command) {
   if (!chatText || !chatForm || !CHAT_AI_COMMANDS.has(value) || chatState.mode !== CHAT_MODE_AI) {
     return;
   }
+  if (value === "/nodecheck") {
+    setChatCommandMenuOpen(false);
+    openNodeCheckPicker();
+    return;
+  }
   chatText.value = value;
   setChatCommandMenuOpen(false);
   chatForm.requestSubmit();
+}
+
+function openNodeCheckPicker() {
+  const picker = document.getElementById("nodecheckPicker");
+  const searchEl = document.getElementById("nodecheckSearch");
+  const listEl = document.getElementById("nodecheckList");
+  if (!picker || !listEl) return;
+
+  function renderPickerList(filter) {
+    const q = (filter || "").toLowerCase();
+    const nodes = getSelectableNodes().filter((n) => {
+      if (!q) return true;
+      return (
+        (n.shortName || "").toLowerCase().includes(q) ||
+        (n.longName  || "").toLowerCase().includes(q) ||
+        (n.userId    || "").toLowerCase().includes(q) ||
+        (n.id        || "").toLowerCase().includes(q)
+      );
+    });
+    listEl.innerHTML = "";
+    if (!nodes.length) {
+      listEl.innerHTML = '<div class="chat-peer-empty">No nodes found</div>';
+      return;
+    }
+    nodes.forEach((node) => {
+      const addr = getNodeAddress(node);
+      const item = document.createElement("div");
+      item.className = "chat-peer-item" + (node.online ? "" : " offline-node");
+      item.innerHTML = `<span class="chat-peer-item-text"><span class="chat-peer-item-name">${getNodeSlashLabel(node)}</span></span>`;
+      item.addEventListener("click", () => {
+        closeNodeCheckPicker();
+        if (chatText) chatText.value = `/nodecheck ${addr}`;
+        if (chatForm) chatForm.requestSubmit();
+      });
+      listEl.appendChild(item);
+    });
+  }
+
+  if (searchEl) {
+    searchEl.value = "";
+    searchEl.oninput = () => renderPickerList(searchEl.value);
+  }
+  renderPickerList("");
+  picker.hidden = false;
+  if (searchEl) setTimeout(() => searchEl.focus(), 50);
+}
+
+function closeNodeCheckPicker() {
+  const picker = document.getElementById("nodecheckPicker");
+  if (picker) picker.hidden = true;
 }
 
 function appendLog(message) {
@@ -630,6 +695,12 @@ function setChatPeerSelection(peerId, { syncWallet = true, persist = true } = {}
   if (chatPeerCashuButton) {
     chatPeerCashuButton.disabled = !chatState.selectedPeer;
   }
+  if (chatPeerLocateButton) {
+    chatPeerLocateButton.disabled = !chatState.selectedPeer;
+  }
+  if (chatPeerInfoButton) {
+    chatPeerInfoButton.disabled = !chatState.selectedPeer;
+  }
 }
 
 function getNodeAddress(node) {
@@ -645,16 +716,48 @@ function getNodeDisplayLabel(node) {
   return name === address ? address : `${name} (${address})`;
 }
 
+function isFavoriteNode(node) {
+  return Boolean(node?.favorite);
+}
+
+function compareNodesForUi(a, b, { unreadFirst = false } = {}) {
+  const aFavorite = isFavoriteNode(a) ? 1 : 0;
+  const bFavorite = isFavoriteNode(b) ? 1 : 0;
+  if (aFavorite !== bFavorite) return bFavorite - aFavorite;
+
+  if (unreadFirst) {
+    const aUnread = unreadPeers.has(getNodeAddress(a)) ? 1 : 0;
+    const bUnread = unreadPeers.has(getNodeAddress(b)) ? 1 : 0;
+    if (aUnread !== bUnread) return bUnread - aUnread;
+  }
+
+  const aOnline = a?.online ? 1 : 0;
+  const bOnline = b?.online ? 1 : 0;
+  if (aOnline !== bOnline) return bOnline - aOnline;
+
+  return getNodeDisplayLabel(a).localeCompare(getNodeDisplayLabel(b));
+}
+
+function sortNodesForUi(nodes, options = {}) {
+  return (Array.isArray(nodes) ? nodes.slice() : []).sort((a, b) => compareNodesForUi(a, b, options));
+}
+
+function getNodeSlashLabel(node) {
+  const addr = getNodeAddress(node);
+  const short = node?.shortName || "";
+  const long = node?.longName || "";
+  return [short, long, addr].filter(Boolean).join(" / ");
+}
+
 function getSelectableNodes() {
   const map = new Map();
   latestNodes.forEach((node) => {
     const address = getNodeAddress(node);
-    if (!address || map.has(address)) {
-      return;
-    }
+    if (!address || map.has(address)) return;
+    if (node.raw?.user?.isUnmessagable) return;
     map.set(address, node);
   });
-  return Array.from(map.values());
+  return sortNodesForUi(Array.from(map.values()));
 }
 
 function peerHasDmHistory(peerId) {
@@ -693,9 +796,22 @@ function populateNodeSelect(selectEl, preferredValue = "") {
   }
   const selectedBefore = preferredValue || selectEl.value || "";
   const nodes = getSelectableNodes();
-  const online = nodes.filter((n) => n.online);
-  const offline = nodes.filter((n) => !n.online);
+  const favorites = nodes.filter((n) => isFavoriteNode(n));
+  const favoriteIds = new Set(favorites.map(getNodeAddress));
+  const online = nodes.filter((n) => n.online && !favoriteIds.has(getNodeAddress(n)));
+  const offline = nodes.filter((n) => !n.online && !favoriteIds.has(getNodeAddress(n)));
   selectEl.innerHTML = '<option value="">Select node</option>';
+  if (favorites.length) {
+    const group = document.createElement("optgroup");
+    group.label = "Favorites";
+    favorites.forEach((node) => {
+      const option = document.createElement("option");
+      option.value = getNodeAddress(node);
+      option.textContent = getNodeDisplayLabel(node);
+      group.appendChild(option);
+    });
+    selectEl.appendChild(group);
+  }
   if (online.length) {
     const group = document.createElement("optgroup");
     group.label = "Online";
@@ -738,6 +854,34 @@ function syncNodeSelectors() {
   renderChatChannelList();
 }
 
+function setFavoriteButtonState(button, favorite) {
+  if (!button) return;
+  button.classList.toggle("is-favorite", Boolean(favorite));
+  button.setAttribute("aria-pressed", favorite ? "true" : "false");
+  button.title = favorite ? "Remove from favorites" : "Add to favorites";
+  button.setAttribute("aria-label", favorite ? "Remove node from favorites" : "Add node to favorites");
+}
+
+function updateFavoriteNodeLocal(nodeId, favorite) {
+  const id = String(nodeId || "").trim();
+  latestNodes = latestNodes.map((node) => (
+    getNodeAddress(node) === id ? { ...node, favorite: Boolean(favorite) } : node
+  ));
+  latestNodes = sortNodesForUi(latestNodes);
+  syncNodeSelectors();
+  syncWalletClientNodeSelect();
+}
+
+async function toggleNodeFavorite(nodeId, favorite) {
+  const id = String(nodeId || "").trim();
+  if (!id) return;
+  const data = await fetchJson("/api/node-favorite", {
+    method: "POST",
+    body: JSON.stringify({ nodeId: id, favorite }),
+  });
+  updateFavoriteNodeLocal(id, Boolean(data.favorite));
+}
+
 function renderChatPeerList() {
   const listEl = document.getElementById("chatPeerList");
   if (!listEl) return;
@@ -751,29 +895,23 @@ function renderChatPeerList() {
     listEl.innerHTML = '<div class="chat-peer-empty">No nodes match filters</div>';
     const activeNode = nodes.find((node) => getNodeAddress(node) === chatState.selectedPeer);
     if (chatPeerLabel) {
-      chatPeerLabel.textContent = activeNode ? getNodeDisplayLabel(activeNode) : "Select node";
+      chatPeerLabel.textContent = activeNode ? getNodeSlashLabel(activeNode) : "Select node";
     }
     return;
   }
-  // Sort: unread peers first, then alphabetically
-  const sorted = [...filteredNodes].sort((a, b) => {
-    const aAddr = getNodeAddress(a);
-    const bAddr = getNodeAddress(b);
-    const aUnread = unreadPeers.has(aAddr) ? 0 : 1;
-    const bUnread = unreadPeers.has(bAddr) ? 0 : 1;
-    if (aUnread !== bUnread) return aUnread - bUnread;
-    return getNodeDisplayLabel(a).localeCompare(getNodeDisplayLabel(b));
-  });
+  const sorted = sortNodesForUi(filteredNodes, { unreadFirst: true });
   listEl.innerHTML = "";
   sorted.forEach((node) => {
     const addr = getNodeAddress(node);
     const label = getNodeDisplayLabel(node);
     const isActive = addr === chatState.selectedPeer;
     const hasUnread = unreadPeers.has(addr);
+    const isFavorite = isFavoriteNode(node);
     const item = document.createElement("div");
-    item.className = "chat-peer-item" + (isActive ? " is-active" : "");
+    item.className = "chat-peer-item" + (isActive ? " is-active" : "") + (isFavorite ? " is-favorite" : "");
     item.dataset.peer = addr;
-    item.innerHTML = `<span class="chat-peer-item-name">${label}</span>` +
+    item.innerHTML = `<span class="chat-peer-item-text"><span class="chat-peer-item-name">${label}</span></span>` +
+      (isFavorite ? `<span class="node-favorite-indicator" title="Favorite"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l2.7 5.5 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.8 1-6.1-4.4-4.3 6.1-.9L12 3z"/></svg></span>` : "") +
       (hasUnread ? `<span class="chat-peer-unread" title="Unread messages"><svg width="14" height="11" viewBox="0 0 14 11" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="0.5" y="0.5" width="13" height="10" rx="1" stroke="currentColor"/><path d="M1 1l6 5 6-5" stroke="currentColor" stroke-linecap="round"/></svg></span>` : "");
     item.addEventListener("click", () => {
       unreadPeers.delete(addr);
@@ -790,7 +928,7 @@ function renderChatPeerList() {
   // Update trigger label
   const activeNode = nodes.find((node) => getNodeAddress(node) === chatState.selectedPeer);
   if (chatPeerLabel) {
-    chatPeerLabel.textContent = activeNode ? getNodeDisplayLabel(activeNode) : "Select node";
+    chatPeerLabel.textContent = activeNode ? getNodeSlashLabel(activeNode) : "Select node";
   }
   updateChatPeerTriggerUnread();
 }
@@ -1914,6 +2052,7 @@ function openDeviceMetaModal() {
   }).catch((err) => {
     deviceMetaStatus.textContent = `Load error: ${err.message}`;
   });
+  refreshDeviceMetaPorts();
 }
 
 async function loadMapNodeOnlineWindow() {
@@ -2051,6 +2190,75 @@ async function openDeviceConnectModal() {
   deviceConnectModal.classList.remove("hidden");
   deviceConnectModal.setAttribute("aria-hidden", "false");
   await refreshDeviceConnectPorts();
+}
+
+async function refreshDeviceMetaPorts() {
+  if (!deviceMetaPortSelect) return;
+  if (deviceMetaPortRefresh) deviceMetaPortRefresh.disabled = true;
+  if (deviceMetaPortConnect) deviceMetaPortConnect.disabled = true;
+  if (deviceMetaPortStatus) deviceMetaPortStatus.textContent = "Scanning ports...";
+  try {
+    const payload = await fetchJson("/api/meshtastic/ports");
+    const ports = Array.isArray(payload.ports) ? payload.ports : [];
+    const selectedPort = String(payload.selectedPort || "").trim();
+    deviceMetaPortSelect.innerHTML = "";
+    const autoOption = document.createElement("option");
+    autoOption.value = "";
+    autoOption.textContent = "Auto-detect (recommended)";
+    deviceMetaPortSelect.appendChild(autoOption);
+    let matched = false;
+    ports.forEach((port) => {
+      const device = String(port?.device || "").trim();
+      if (!device) return;
+      const option = document.createElement("option");
+      option.value = device;
+      option.textContent = describeSerialPortOption(port);
+      if ((selectedPort && device === selectedPort) || (!selectedPort && Boolean(port?.isSelected))) {
+        option.selected = true;
+        matched = true;
+      }
+      deviceMetaPortSelect.appendChild(option);
+    });
+    if (selectedPort && !matched) {
+      const saved = document.createElement("option");
+      saved.value = selectedPort;
+      saved.textContent = `${selectedPort} - saved`;
+      saved.selected = true;
+      deviceMetaPortSelect.appendChild(saved);
+    }
+    if (deviceMetaPortStatus) deviceMetaPortStatus.textContent = selectedPort ? `Active: ${selectedPort}` : "";
+  } catch (e) {
+    if (deviceMetaPortStatus) deviceMetaPortStatus.textContent = `Scan failed: ${e.message}`;
+  } finally {
+    if (deviceMetaPortRefresh) deviceMetaPortRefresh.disabled = false;
+    if (deviceMetaPortConnect) deviceMetaPortConnect.disabled = false;
+  }
+}
+
+async function connectDeviceMetaPort() {
+  if (!deviceMetaPortSelect) return;
+  const port = String(deviceMetaPortSelect.value || "").trim();
+  if (deviceMetaPortRefresh) deviceMetaPortRefresh.disabled = true;
+  if (deviceMetaPortConnect) deviceMetaPortConnect.disabled = true;
+  if (deviceMetaPortStatus) deviceMetaPortStatus.textContent = port ? `Connecting to ${port}...` : "Connecting with auto-detect...";
+  try {
+    await fetchJson("/api/meshtastic/connect", { method: "POST", body: JSON.stringify({ port }) });
+    await loadStatus();
+    if (deviceMetaPortStatus) deviceMetaPortStatus.textContent = port ? `Connected to ${port}` : "Connected";
+  } catch (e) {
+    if (deviceMetaPortStatus) deviceMetaPortStatus.textContent = `Connect failed: ${e.message}`;
+  } finally {
+    if (deviceMetaPortRefresh) deviceMetaPortRefresh.disabled = false;
+    if (deviceMetaPortConnect) deviceMetaPortConnect.disabled = false;
+  }
+}
+
+if (deviceMetaPortRefresh) {
+  deviceMetaPortRefresh.addEventListener("click", refreshDeviceMetaPorts);
+}
+
+if (deviceMetaPortConnect) {
+  deviceMetaPortConnect.addEventListener("click", connectDeviceMetaPort);
 }
 
 function openWalletTestModeWarningModal() {
@@ -2736,7 +2944,8 @@ function handleWalletModalFocusTrap(event) {
 }
 
 function renderNodes(nodes = [], meshLinks = []) {
-  latestNodes = Array.isArray(nodes) ? nodes.slice() : [];
+  const displayNodes = sortNodesForUi(nodes);
+  latestNodes = displayNodes;
   latestMeshLinks = Array.isArray(meshLinks) ? meshLinks.slice() : [];
   const onlineCount = latestNodes.filter((n) => n.online).length;
   const countEl = document.getElementById("nodesOnlineCount");
@@ -2746,7 +2955,7 @@ function renderNodes(nodes = [], meshLinks = []) {
   syncNodeSelectors();
   syncWalletClientNodeSelect();
   nodesList.innerHTML = "";
-  if (!nodes.length) {
+  if (!displayNodes.length) {
     nodesList.innerHTML = '<div class="node-empty">No nodes yet</div>';
     if (chatState.mode === CHAT_MODE_DM) {
       renderDmChat();
@@ -2754,9 +2963,9 @@ function renderNodes(nodes = [], meshLinks = []) {
     return;
   }
 
-  nodes.forEach((node) => {
+  displayNodes.forEach((node) => {
     const item = document.createElement("article");
-    item.className = `node-item ${node.online ? "online" : "offline"} ${node.role === "weather" ? "weather" : ""} ${node.live ? "live" : "snapshot"}`;
+    item.className = `node-item ${node.online ? "online" : "offline"} ${node.role === "weather" ? "weather" : ""} ${node.live ? "live" : "snapshot"} ${isFavoriteNode(node) ? "favorite" : ""}`;
     const nodeAddress = getNodeAddress(node);
 
     const name = node.longName || node.shortName || nodeAddress || "unknown";
@@ -2782,6 +2991,11 @@ function renderNodes(nodes = [], meshLinks = []) {
         <div class="node-meta"></div>
       </div>
       <div class="node-actions">
+        <button type="button" class="node-action-btn node-action-favorite" title="Add to favorites" aria-label="Add node to favorites" aria-pressed="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M12 3l2.7 5.5 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.8 1-6.1-4.4-4.3 6.1-.9L12 3z"></path>
+          </svg>
+        </button>
         <button type="button" class="node-action-btn node-action-message" title="Send message" aria-label="Send message to node">
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
             <path d="M4 5h16v10H8l-4 4V5z"></path>
@@ -2798,10 +3012,28 @@ function renderNodes(nodes = [], meshLinks = []) {
     item.querySelector(".node-name").textContent = name;
     item.querySelector(".node-meta").textContent = metaParts.join(" | ") || (node.online ? "online" : "offline");
 
+    const favoriteButton = item.querySelector(".node-action-favorite");
     const messageButton = item.querySelector(".node-action-message");
     const cashuButton = item.querySelector(".node-action-cashu");
+    const isUnmessagable = !!(node.raw?.user?.isUnmessagable);
+    setFavoriteButtonState(favoriteButton, isFavoriteNode(node));
     if (!nodeAddress) {
-      messageButton.disabled = true;
+      favoriteButton.disabled = true;
+    } else {
+      favoriteButton.addEventListener("click", async (event) => {
+        event.stopPropagation();
+        favoriteButton.disabled = true;
+        try {
+          await toggleNodeFavorite(nodeAddress, !isFavoriteNode(node));
+          renderNodes(latestNodes, latestMeshLinks);
+        } catch (e) {
+          favoriteButton.disabled = false;
+        }
+      });
+    }
+    if (isUnmessagable) { messageButton.remove(); cashuButton.remove(); }
+    if (!nodeAddress) {
+      if (messageButton.isConnected) messageButton.disabled = true;
       cashuButton.disabled = true;
     } else {
       messageButton.addEventListener("click", (event) => {
@@ -2913,6 +3145,7 @@ async function openNodeModal(nodeId) {
     const isOnline = !!payload.online;
     nodeModalDot.className = `node-dot${isOnline ? " node-dot--online" : " node-dot--offline"}`;
     nodeModalSubtitle.textContent = `${payload.role || "node"} | ${payload.observedPortnums?.length ? "live packets seen" : "snapshot only"}`;
+    setFavoriteButtonState(nodeModalFavoriteButton, Boolean(payload.favorite));
 
     const raw = payload.raw || {};
     const lat = raw.position?.latitude ?? raw.latitude;
@@ -2923,7 +3156,7 @@ async function openNodeModal(nodeId) {
       ["Name", payload.longName || payload.shortName || payload.userId || payload.id],
       ["ID", payload.userId || payload.id],
       ["Short", payload.shortName],
-      ["Hardware", payload.hardware],
+      ["Hardware", payload.hardware || raw.user?.hwModel],
       ...(payload.meshtasticRole ? [["Role", payload.meshtasticRole]] : []),
       ...(payload.modemPreset ? [["Modem", payload.modemPreset]] : []),
       ...(lat != null && lat !== 0 ? [["Lat", Number(lat).toFixed(5)], ["Lon", Number(lon).toFixed(5)]] : []),
@@ -2996,6 +3229,26 @@ async function openNodeModal(nodeId) {
     nodeModalRaw.textContent = JSON.stringify(payload.raw || {}, null, 2);
 
     const peerId = payload.userId || payload.id;
+    const modalUnmessagable = !!(payload.raw?.user?.isUnmessagable);
+    if (nodeModalFavoriteButton) {
+      nodeModalFavoriteButton.disabled = !peerId;
+      nodeModalFavoriteButton.onclick = async () => {
+        if (!peerId) return;
+        nodeModalFavoriteButton.disabled = true;
+        try {
+          await toggleNodeFavorite(peerId, !Boolean(payload.favorite));
+          payload.favorite = !Boolean(payload.favorite);
+          setFavoriteButtonState(nodeModalFavoriteButton, Boolean(payload.favorite));
+          renderNodes(latestNodes, latestMeshLinks);
+        } catch (e) {
+          setFavoriteButtonState(nodeModalFavoriteButton, Boolean(payload.favorite));
+        } finally {
+          nodeModalFavoriteButton.disabled = false;
+        }
+      };
+    }
+    nodeModalChatButton.classList.toggle("hidden", modalUnmessagable);
+    nodeModalSendButton.classList.toggle("hidden", modalUnmessagable);
     nodeModalChatButton.onclick = () => { closeNodeModal(); closeNodesMap(); openDmForNode(peerId); };
     nodeModalSendButton.onclick = () => { closeNodeModal(); closeNodesMap(); openCashuSendForNode(peerId); };
 
@@ -5890,6 +6143,9 @@ chatText.addEventListener("keydown", (event) => {
     setChatCommandMenuOpen(false);
     return;
   }
+  if (event.key === "Escape") {
+    closeNodeCheckPicker();
+  }
   if (event.key === "Enter" && !event.shiftKey) {
     event.preventDefault();
     chatForm.requestSubmit();
@@ -5920,6 +6176,15 @@ document.addEventListener("click", (event) => {
   const insideLauncher = chatCommandMenu.contains(target) || chatCommandButton?.contains(target);
   if (!insideLauncher) {
     setChatCommandMenuOpen(false);
+  }
+});
+
+document.addEventListener("click", (event) => {
+  const picker = document.getElementById("nodecheckPicker");
+  if (!picker || picker.hidden) return;
+  const launcher = chatCommandLauncher;
+  if (launcher && !launcher.contains(event.target)) {
+    closeNodeCheckPicker();
   }
 });
 
@@ -5972,6 +6237,28 @@ if (chatPeerTrigger) {
     const listEl = document.getElementById("chatPeerList");
     if (listEl) listEl.hidden = !listEl.hidden;
     if (chatChannelList) chatChannelList.hidden = true;
+  });
+}
+
+if (chatPeerLocateButton) {
+  chatPeerLocateButton.addEventListener("click", () => {
+    const peerId = chatState.selectedPeer;
+    if (!peerId) return;
+    openNodesMap();
+    setTimeout(() => {
+      const pos = _renderedPosById.get(peerId);
+      if (pos && _mapInstance) {
+        _mapInstance.setView([pos.lat, pos.lon], 14, { animate: true });
+      }
+    }, 400);
+  });
+}
+
+if (chatPeerInfoButton) {
+  chatPeerInfoButton.addEventListener("click", () => {
+    const peerId = chatState.selectedPeer;
+    if (!peerId) return;
+    openNodeModal(peerId);
   });
 }
 
@@ -6476,13 +6763,21 @@ function renderWalletClients() {
     walletClientList.innerHTML = '<div class="wallet-hint">No approved clients.</div>';
     return;
   }
-  walletClients.forEach((nodeId) => {
-    const node = latestNodes.find((n) => (n.userId || n.id) === nodeId);
+  const sortedClients = walletClients.slice().sort((a, b) => {
+    const nodeA = latestNodes.find((n) => getNodeAddress(n) === a);
+    const nodeB = latestNodes.find((n) => getNodeAddress(n) === b);
+    if (nodeA && nodeB) return compareNodesForUi(nodeA, nodeB);
+    if (nodeA) return -1;
+    if (nodeB) return 1;
+    return String(a).localeCompare(String(b));
+  });
+  sortedClients.forEach((nodeId) => {
+    const node = latestNodes.find((n) => getNodeAddress(n) === nodeId);
     const label = node
-      ? `${node.shortName || node.longName || nodeId} (${nodeId})`
+      ? `${isFavoriteNode(node) ? "Favorite - " : ""}${node.shortName || node.longName || nodeId} (${nodeId})`
       : nodeId;
     const row = document.createElement("div");
-    row.className = "wallet-client-row";
+    row.className = `wallet-client-row${node && isFavoriteNode(node) ? " is-favorite" : ""}`;
     row.innerHTML = `<span class="wallet-client-label">${label}</span><button type="button" class="wallet-inline-action wallet-client-remove" data-id="${nodeId}">Remove</button>`;
     row.querySelector(".wallet-client-remove").addEventListener("click", async () => {
       try {
@@ -6501,10 +6796,10 @@ function syncWalletClientNodeSelect() {
   if (!walletClientNodeSelect) return;
   const current = walletClientNodeSelect.value;
   walletClientNodeSelect.innerHTML = '<option value="">Select a node...</option>';
-  latestNodes.forEach((n) => {
+  getSelectableNodes().forEach((n) => {
     const id = n.userId || n.id;
     if (!id || walletClients.includes(id)) return;
-    const label = `${n.shortName || n.longName || id} (${id})`;
+    const label = `${isFavoriteNode(n) ? "Favorite - " : ""}${n.shortName || n.longName || id} (${id})`;
     const opt = document.createElement("option");
     opt.value = id;
     opt.textContent = label;
@@ -7440,6 +7735,102 @@ function connectEvents() {
   };
 }
 
+function initLeftColumnPanelResize() {
+  if (!leftColumn || !nodesPanel || !leftColumnResizeHandle) return;
+
+  const mobileQuery = window.matchMedia("(max-width: 1120px)");
+  const storageKey = "leftColumnNodesPanelHeight";
+  const minNodesHeight = 140;
+  const minLogHeight = 140;
+  let dragState = null;
+
+  const applyNodesHeight = (height) => {
+    const value = Math.max(minNodesHeight, Math.round(height));
+    leftColumn.style.setProperty("--nodes-panel-height", `${value}px`);
+    try {
+      localStorage.setItem(storageKey, String(value));
+    } catch (_) {}
+  };
+
+  const clearNodesHeight = () => {
+    leftColumn.style.removeProperty("--nodes-panel-height");
+  };
+
+  const positionHandle = () => {
+    const nodesRect = nodesPanel.getBoundingClientRect();
+    const leftRect = leftColumn.getBoundingClientRect();
+    const top = nodesRect.bottom - leftRect.top;
+    leftColumn.style.setProperty("--left-resizer-top", `${Math.round(top)}px`);
+  };
+
+  const onPointerMove = (event) => {
+    if (!dragState || mobileQuery.matches) return;
+    const offset = event.clientY - dragState.startY;
+    const target = dragState.startHeight + offset;
+    const maxHeight = dragState.maxHeight();
+    const clamped = Math.max(minNodesHeight, Math.min(maxHeight, target));
+    leftColumn.style.setProperty("--nodes-panel-height", `${Math.round(clamped)}px`);
+    positionHandle();
+  };
+
+  const stopDrag = () => {
+    if (!dragState) return;
+    document.body.classList.remove("is-resizing-panels");
+    window.removeEventListener("pointermove", onPointerMove);
+    window.removeEventListener("pointerup", stopDrag);
+    window.removeEventListener("pointercancel", stopDrag);
+    const current = parseFloat(getComputedStyle(nodesPanel).height);
+    if (Number.isFinite(current)) applyNodesHeight(current);
+    dragState = null;
+  };
+
+  leftColumnResizeHandle.addEventListener("pointerdown", (event) => {
+    if (mobileQuery.matches) return;
+    const nodesRect = nodesPanel.getBoundingClientRect();
+    const leftRect = leftColumn.getBoundingClientRect();
+    const logRect = document.querySelector(".log-panel")?.getBoundingClientRect();
+    dragState = {
+      startY: event.clientY,
+      startHeight: nodesRect.height,
+      maxHeight: () => {
+        if (logRect) {
+          const maxByLogTop = logRect.bottom - nodesRect.top - minLogHeight - 8;
+          return Math.max(minNodesHeight, maxByLogTop);
+        }
+        return Math.max(minNodesHeight, leftRect.bottom - nodesRect.top - minLogHeight);
+      },
+    };
+    document.body.classList.add("is-resizing-panels");
+    leftColumnResizeHandle.setPointerCapture(event.pointerId);
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", stopDrag);
+    window.addEventListener("pointercancel", stopDrag);
+  });
+
+  const restoreStoredHeight = () => {
+    if (mobileQuery.matches) {
+      clearNodesHeight();
+      leftColumn.style.removeProperty("--left-resizer-top");
+      return;
+    }
+    let saved = null;
+    try {
+      saved = localStorage.getItem(storageKey);
+    } catch (_) {
+      saved = null;
+    }
+    const parsed = Number.parseFloat(saved || "");
+    if (Number.isFinite(parsed)) {
+      applyNodesHeight(parsed);
+    }
+    positionHandle();
+  };
+
+  restoreStoredHeight();
+  window.addEventListener("resize", positionHandle);
+  mobileQuery.addEventListener("change", restoreStoredHeight);
+}
+
 setWalletStatusRow();
 renderWalletHistory();
 if (walletPreferredUnitSelect) walletPreferredUnitSelect.value = walletState.settings.preferredUnit;
@@ -7456,6 +7847,7 @@ loadMessages();
 loadLogs();
 loadNodes();
 loadWalletClients();
+initLeftColumnPanelResize();
 connectEvents();
 
 if ("serviceWorker" in navigator) {

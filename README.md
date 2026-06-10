@@ -53,6 +53,21 @@ Runs a quantized LLM entirely on your machine via `llama.cpp`. No API keys, no c
 
 Other Meshtastic nodes in range can query your AI by radio. Send `@bot your question` or `!ask your question` from any Meshtastic device and the response comes back over the air.
 
+### Mesh slash commands
+
+When AI over mesh is enabled, any node can send a **slash command** as a direct message to get an instant structured response — no open-ended question needed. Send `/help` to get the full list. Commands work even when the LLM is busy or unavailable; they run from live telemetry data without touching the model.
+
+| Command | What it returns |
+|---|---|
+| `/help` | List of all available commands |
+| `/summary` | Node counts, network health, activity breakdown, temperature |
+| `/weather` | Latest environment readings from telemetry sensors |
+| `/activity` | Recent event counts (telemetry, messages, DMs) for the current window |
+| `/battery` | Battery levels — average, low nodes, critical nodes |
+| `/nodecheck <name>` | Status of a specific node: online state, last seen, SNR, hops, battery |
+| `/wallet` | Your wallet balance and available off-grid Cashu proofs |
+| `send <amount> <node>` | Send Cashu sats to a node by its short name (requires wallet client auth) |
+
 ### TAK / ATAK / Cursor on Target (CoT)
 
 Blackbox Node includes a dedicated **TAK layer workflow** for Meshtastic-backed map exchange:
@@ -275,6 +290,7 @@ On launch:
 - Local LLM via `llama.cpp`, fully offline after model download
 - Mesh-triggered queries with `@bot ...` and `!ask ...`
 - `!reset` clears per-peer conversation context
+- Slash commands over mesh DM: `/help`, `/summary`, `/weather`, `/activity`, `/battery`, `/nodecheck`
 - Configurable system prompt, temperature, top-p, and token limits per mode
 - Built-in model manager for curated GGUF downloads
 
