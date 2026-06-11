@@ -430,23 +430,23 @@ function findPythonLauncher() {
   return null;
 }
 
-function ensureMeshtasticDependency() {
-  if (exists(path.join(PYDEPS_DIR, "meshtastic"))) {
-    log("python meshtastic package already present");
+function ensureMeshcoreDependency() {
+  if (exists(path.join(PYDEPS_DIR, "meshcore"))) {
+    log("python meshcore package already present");
     return;
   }
 
   const pythonLauncher = findPythonLauncher();
   if (!pythonLauncher) {
-    log("python not found, skipping Meshtastic Python dependency bootstrap");
+    log("python not found, skipping MeshCore Python dependency bootstrap");
     return;
   }
 
   fs.mkdirSync(PYDEPS_DIR, { recursive: true });
-  log("installing Meshtastic Python package into ./pydeps");
+  log("installing MeshCore Python package into ./pydeps");
   const result = spawnSync(
     pythonLauncher,
-    ["-m", "pip", "install", "--disable-pip-version-check", "--target", PYDEPS_DIR, "meshtastic"],
+    ["-m", "pip", "install", "--disable-pip-version-check", "--target", PYDEPS_DIR, "meshcore"],
     {
       cwd: ROOT_DIR,
       stdio: "inherit",
@@ -455,11 +455,11 @@ function ensureMeshtasticDependency() {
   );
 
   if (result.status !== 0) {
-    log("Meshtastic Python dependency install failed; radio features may stay unavailable until Python is fixed");
+    log("MeshCore Python dependency install failed; radio features may stay unavailable until Python is fixed");
     return;
   }
 
-  log("Meshtastic Python package installed");
+  log("MeshCore Python package installed");
 }
 
 async function main() {
@@ -470,7 +470,7 @@ async function main() {
 
   await ensureLlamaRuntime();
   await ensureStarterModel();
-  ensureMeshtasticDependency();
+  ensureMeshcoreDependency();
 }
 
 main().catch((error) => {

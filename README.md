@@ -1,10 +1,10 @@
-# BLACKBOX NODE - Offline AI, Meshtastic, TAK / ATAK, and Off-Grid Payments
+# BLACKBOX NODE - Offline AI, MeshCore LoRa Mesh, and Off-Grid Payments
 
 > **Built for when the internet is gone.**
 
 Website: [blackbox.host](https://blackbox.host/)
 
-Blackbox Node is an offline-first command post for [Meshtastic](https://meshtastic.org/) and **LoRa** networks. It combines a fully local LLM, radio messaging, **TAK / ATAK** map-object exchange over **Cursor on Target (CoT)**, telemetry, and **Bitcoin + Cashu** payments in one self-hosted web UI.
+Blackbox Node is an offline-first command post for [MeshCore](https://meshcore.co.uk/) **LoRa** networks. It combines a fully local LLM, end-to-end encrypted radio messaging with delivery confirmation, telemetry, and **Bitcoin + Cashu** payments in one self-hosted web UI.
 
 It is designed for **off-grid communications**, **disaster response**, **field operations**, **community mesh networks**, and anyone who wants local AI and situational awareness without cloud infrastructure, without a cell tower, and without a remote server.
 
@@ -19,21 +19,21 @@ It is designed for **off-grid communications**, **disaster response**, **field o
 ## Why people use Blackbox Node
 
 - Run a local offline AI assistant on your own machine with `llama.cpp`
-- Turn a laptop plus Meshtastic radio into a resilient **LoRa mesh node**
-- Send and receive **TAK / ATAK / CoT** map objects over the mesh
+- Turn a laptop plus MeshCore radio into a resilient **LoRa mesh node**
 - Keep chat, telemetry, and node awareness working during outages
+- Get **end-to-end encrypted DMs with delivery confirmation** over radio
 - Move value off-grid with **Bitcoin** and **Cashu ecash**
 - Store everything locally in `./data/` with no accounts and no hosted backend
 
 ---
 
-## What is Meshtastic and LoRa?
+## What is MeshCore and LoRa?
 
-[Meshtastic](https://meshtastic.org/) is a free, open-source project that lets inexpensive hardware form a decentralized mesh radio network. Nodes communicate directly over radio and route messages hop by hop without internet or cellular infrastructure.
+[MeshCore](https://meshcore.co.uk/) is a free, open-source mesh radio firmware. Nodes exchange **adverts** to discover each other as **contacts** (identified by public keys), and route messages hop by hop over learned paths without internet or cellular infrastructure. Flash the **companion firmware** onto a supported board in your browser at [flasher.meshcore.io](https://flasher.meshcore.io/).
 
-The radios use **LoRa** (Long Range), a spread-spectrum radio modulation that can reach roughly **5-15+ km** in open terrain. Every node is both a receiver and a repeater, so the network becomes more resilient as more nodes join.
+The radios use **LoRa** (Long Range), a spread-spectrum radio modulation that can reach roughly **5-15+ km** in open terrain. Dedicated repeater and room-server nodes extend the network, and they can be administered remotely over the mesh.
 
-Popular hardware you can use with Meshtastic:
+Popular hardware you can use with MeshCore:
 - [Heltec LoRa 32](https://heltec.org/project/wifi-lora-32-v3/) - compact ESP32-based starter board
 - [LILYGO T-Beam](https://www.lilygo.cc/products/t-beam-v1-1-esp32-lora) - built-in GPS and battery management
 - [RAK WisBlock](https://store.rakwireless.com/collections/wisblock-core) - modular and highly configurable
@@ -51,7 +51,7 @@ Runs a quantized LLM entirely on your machine via `llama.cpp`. No API keys, no c
 
 ### AI over the mesh
 
-Other Meshtastic nodes in range can query your AI by radio. Send `@bot your question` or `!ask your question` from any Meshtastic device and the response comes back over the air.
+Other MeshCore nodes in range can query your AI by radio. Send `@bot your question` or `!ask your question` from any MeshCore device and the response comes back over the air.
 
 ### Mesh slash commands
 
@@ -68,24 +68,9 @@ When AI over mesh is enabled, any node can send a **slash command** as a direct 
 | `/wallet` | Your wallet balance and available off-grid Cashu proofs |
 | `send <amount> <node>` | Send Cashu sats to a node by its short name (requires wallet client auth) |
 
-### TAK / ATAK / Cursor on Target (CoT)
-
-Blackbox Node includes a dedicated **TAK layer workflow** for Meshtastic-backed map exchange:
-
-- send **waypoints, circles, and range/bearing lines** from the map
-- receive incoming **CoT XML** over the mesh and render supported features such as markers, routes, polygons, circles, ellipses, and rectangles
-- delete previously shared TAK objects with generated CoT delete events
-- configure **TAK channel** and **TAK hop limit** per device
-- automatically switch large CoT payloads to **fountain transfer** for lossy mesh links
-- save incoming captures to `data/tak_capture/` for debugging and replay
-
-This makes the project relevant not just for hobby mesh chat, but also for **ATAK-adjacent field mapping**, **team awareness**, and **situational awareness on disconnected networks**.
-
-![TAK / ATAK map workflow](static/img/TAK.png)
-
 ### Communication and telemetry
 
-All inbound and outbound Meshtastic messages are tracked in the web UI. Node positions, telemetry, battery levels, and environment readings are recorded and browsable. Direct messages and channel broadcasts are both supported.
+All inbound and outbound MeshCore messages are tracked in the web UI. Contacts are discovered via adverts and keyed by public key; positions, pull-based telemetry, battery levels, and environment readings are recorded and browsable. Direct messages are end-to-end encrypted with delivery confirmation (RTT ticks), and channel broadcasts (channels 0-7) are supported alongside **room servers** (store-and-forward threads) and a **remote admin console** for repeater/room nodes.
 
 ![Chat and message log](static/img/chat.png)
 
@@ -93,26 +78,26 @@ All inbound and outbound Meshtastic messages are tracked in the web UI. Node pos
 
 Blackbox Node includes a built-in **Bitcoin wallet** (on-chain, BIP-39/HD) and a **Cashu ecash wallet** for Lightning-compatible off-grid transactions.
 
-[Cashu](https://cashu.space) tokens are bearer instruments that can be copied and pasted like text, so payments can move over Meshtastic radio as plain messages. When connectivity returns, tokens can be melted back to Lightning or held as ecash.
+[Cashu](https://cashu.space) tokens are bearer instruments that can be copied and pasted like text, so payments can move over MeshCore radio as plain messages. When connectivity returns, tokens can be melted back to Lightning or held as ecash.
 
 This makes it possible to run basic economic activity such as tipping, paying for services, and splitting resources entirely over a radio mesh network.
 
 #### External Wallet Clients
 
-You can approve specific mesh nodes to control your wallet remotely over DM. This lets you trigger payments from a handheld Meshtastic device without touching the node's web UI.
+You can approve specific mesh nodes to control your wallet remotely over DM. This lets you trigger payments from a handheld MeshCore device without touching the node's web UI.
 
 **Setup:** In the wallet **Settings** tab, enable **External Wallet Clients** and add the node(s) you want to authorize from the dropdown.
 
 **Workflow:**
 
-1. Send `/wallet` as a direct message to your node from an approved device.
+1. Send `/wallet` as a direct message to your node from an approved MeshCore device.
    The node replies with your current balance and available off-grid proofs:
    ```
    💰 22 sats
    Proofs: [6][16]
    send <amt> <node>
    ```
-2. Reply with a send command using the target node's **Short Name** (4-character mesh identifier):
+2. Reply with a send command using the target node's **name** (or public-key prefix):
    ```
    send 6 f4e5
    ```
@@ -134,7 +119,7 @@ You can approve specific mesh nodes to control your wallet remotely over DM. Thi
 
 - Off-grid community infrastructure
 - Disaster communications and blackout fallback
-- Field teams using Meshtastic plus TAK-style map sharing
+- Field teams coordinating over MeshCore radios
 - Rural or expedition deployments with no reliable internet
 - Local-first AI nodes for neighborhoods, events, vehicles, or camps
 
@@ -145,9 +130,9 @@ You can approve specific mesh nodes to control your wallet remotely over DM. Thi
 | Mode | What it needs |
 |---|---|
 | **Local offline AI only** | A machine running Node.js and Python, plus a GGUF model file. No radio and no internet during runtime. |
-| **Full off-grid mesh node** | Same as above, plus a Meshtastic device connected by USB serial. |
+| **Full off-grid mesh node** | Same as above, plus a MeshCore companion-firmware device connected by USB serial or TCP. |
 
-The app starts in whatever mode it can. Radio, TAK, and mesh features stay inactive until a device is found.
+The app starts in whatever mode it can. Radio and mesh features stay inactive until a device is connected.
 
 ---
 
@@ -165,7 +150,7 @@ During `npm install`, the project bootstraps the local AI runtime automatically:
 - installs JavaScript dependencies
 - downloads a platform-matched `llama.cpp` runtime into `./llama/` if missing (Windows/Linux/macOS)
 - downloads a starter GGUF model into `./models/` if missing
-- attempts to install the Meshtastic Python package into `./pydeps/` if Python is available
+- attempts to install the MeshCore Python package into `./pydeps/` if Python is available
 
 That is enough for the web UI and local AI to start on a clean machine.
 
@@ -174,7 +159,7 @@ That is enough for the web UI and local AI to start on a clean machine.
 Install these before anything else:
 
 - **[Node.js 18+](https://nodejs.org/)** - main runtime
-- **[Python 3.11+](https://www.python.org/downloads/)** - Meshtastic radio bridge and TAK transport logic
+- **[Python 3.11+](https://www.python.org/downloads/)** - MeshCore radio bridge
 
 Verify both are available:
 
@@ -235,22 +220,11 @@ mkdir models
 
 Then place any `.gguf` file into `models/`. Recommended starter: `Qwen2.5-3B-Instruct-Q5_K_M.gguf` (~2.3 GB).
 
-### 5. (Optional) Connect a Meshtastic device
+### 5. (Optional) Connect a MeshCore device
 
-Plug in your Meshtastic device via USB before starting. The app auto-detects serial ports and installs Python dependencies automatically on first connect.
+Flash the **MeshCore companion firmware** onto your board at [flasher.meshcore.io](https://flasher.meshcore.io/), then plug it in via USB (or expose it over TCP). Pick the transport and port in the **SETUP > Connection** screen; the serial port list is auto-detected.
 
-No device? The app still starts fine. Mesh, telemetry, and TAK features just show as disconnected.
-
----
-
-## TAK quick start
-
-1. Connect a Meshtastic device and start the app with `npm start`.
-2. Open `http://127.0.0.1:7860`.
-3. In **Device Identity**, set **TAK Channel** and **TAK Hop Limit** if needed.
-4. Open the map, toggle the **TAK** panel, and create a waypoint, circle, or ruler overlay.
-5. Send it over the mesh. Large CoT payloads will automatically use fountain transfer.
-6. Incoming supported CoT objects are parsed and rendered on the map, and captures are saved under `data/tak_capture/`.
+No device? The app still starts fine. Mesh and telemetry features just show as disconnected.
 
 ---
 
@@ -265,7 +239,7 @@ On launch:
 
 - the web UI opens at `http://127.0.0.1:7860`
 - `llama-server` (or `llama-server.exe` on Windows) starts and loads the selected model
-- the Python Meshtastic bridge (`bridge.py`) connects to a detected serial device
+- the Python MeshCore bridge (`bridge.py`) connects to the configured serial or TCP radio
 - the installer prepares `./llama/`, `./models/`, and tries to prepare `./pydeps/`
 
 ---
@@ -275,11 +249,11 @@ On launch:
 | Requirement | Notes |
 |---|---|
 | Node.js 18+ | Runtime for the web server |
-| Python 3.11+ | Required only for Meshtastic radio and TAK features |
+| Python 3.11+ | Required only for the MeshCore radio bridge |
 | Internet during `npm install` | Needed to download `llama.cpp`, a starter model, and optional Python deps |
 | `./llama/llama-server` (or `llama-server.exe` on Windows) | Auto-downloaded on install if missing |
 | At least one `.gguf` in `./models/` | Auto-downloaded on install if missing |
-| Meshtastic device on USB serial | Optional, but required for radio, telemetry, and TAK transport |
+| MeshCore device on USB serial or TCP | Optional, but required for radio and telemetry |
 
 ---
 
@@ -294,26 +268,20 @@ On launch:
 - Configurable system prompt, temperature, top-p, and token limits per mode
 - Built-in model manager for curated GGUF downloads
 
-**Meshtastic / Radio**
+**MeshCore / Radio**
 
-- Auto-detects Meshtastic serial devices on startup
-- Inbound message log and node list with telemetry, battery, SNR, position, and environment
-- Node detail view with raw packet data
-- Weather and environment parsing from telemetry and text broadcasts
-- `nodes` / `list nodes` query returns a compact node list over the mesh
+- Serial and TCP transports with auto-detected serial port list
+- Contacts discovered via adverts, keyed by public key, with type badges (chat / repeater / room)
+- E2E encrypted DMs with delivery confirmation and RTT, ack-paced chunking for long messages
+- Channel broadcasts (channels 0-7) with shareable `meshcore://` channel URIs and pixel QR codes
+- Room servers: join, login, and fetch store-and-forward messages
+- Remote admin console for repeaters and room servers (CLI over mesh)
+- Pull-based telemetry (Cayenne LPP): battery, voltage, temperature, environment
+- Trace path with per-hop SNR, cached out-path display, reset-path action
+- Full-screen retro SETUP console: connection, identity, radio presets, channels, contacts, device stats, advanced tuning
+- Weather and environment parsing from telemetry
+- `nodes` / `list nodes` query returns a compact contact list over the mesh
 - `weather` / `forecast` query returns the latest parsed weather data
-- Reconnect and port-selection UI
-
-**TAK / ATAK / CoT**
-
-- Dedicated TAK layer panel in the web map
-- Send CoT objects over Meshtastic from the web map: waypoint, circle, and ruler overlays
-- Parse and render incoming CoT XML from the mesh
-- Render richer inbound CoT geometry including routes, polygons, ellipses, and rectangles
-- CoT delete-event generation for removing shared objects
-- Per-device TAK channel and hop-limit settings
-- Fountain-coded transfer path for large CoT payloads
-- Debug capture output under `data/tak_capture/` and `data/tak_plugin_debug/`
 
 **Payments**
 
@@ -327,7 +295,7 @@ On launch:
 
 **UI and storage**
 
-- Local web UI for message log, node list, map, TAK layers, local chat, wallet, and settings
+- Local web UI for message log, contact list, map, local chat, wallet, and settings
 - All data stored locally in `./data/`
 - No external database, no accounts, no telemetry
 
@@ -341,19 +309,17 @@ On launch:
 | LLM backend | `http://127.0.0.1:8080` |
 | Starter model installed by bootstrap | `Qwen2.5-0.5B-Instruct-Q3_K_M.gguf` |
 | Default model | `Qwen2.5-0.5B-Instruct-Q3_K_M.gguf` |
-| Default TAK channel | `0` |
-| Default TAK hop limit | `3` |
 
 ---
 
 ## Notes
 
-- The app runs without a radio. Meshtastic, TAK, and mesh features simply show as disconnected.
-- If Python is missing, the web UI and local AI still work, but Meshtastic and TAK transport features stay unavailable.
-- Automatic bootstrap currently targets Windows for `llama.cpp` runtime download.
+- The app runs without a radio. MeshCore and mesh features simply show as disconnected.
+- If Python is missing, the web UI and local AI still work, but MeshCore radio features stay unavailable.
+- Radios must run the **MeshCore companion firmware** (flash at [flasher.meshcore.io](https://flasher.meshcore.io/)). Meshtastic firmware is not supported by this fork.
+- TAK / ATAK / CoT support from earlier versions has been removed.
 - Downloading models or auto-installing Python packages requires internet during `npm install`. Runtime is otherwise fully local.
 - Cashu token operations usually require internet access to reach the mint. Tokens already in your wallet can still be held and transferred offline, but creating a new send offline only works when your existing proofs already match the exact amount; otherwise the wallet must contact the mint to split/change proofs.
-- Current bridge support is strongest for **CoT XML / `ATAK_FORWARDER`** traffic. Raw `ATAK_PLUGIN` protobuf payloads are captured for debugging, but are not fully decoded by the bridge yet.
 
 ---
 

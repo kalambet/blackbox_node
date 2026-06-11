@@ -5,7 +5,7 @@
 **Blackbox** is a portable, self-hosted off-grid node for communication, local computing, and value transfer in environments where the internet is unavailable, censored, or degraded.
 
 It combines several critical layers in one local node:
-- mesh communication over LoRa / Meshtastic
+- mesh communication over LoRa / MeshCore
 - local services and interfaces accessible over Wi-Fi / LAN
 - offline-first mapping and data exchange
 - local AI / LLM without cloud dependency
@@ -84,7 +84,7 @@ Users can run a local LLM for analysis, data navigation, documentation support, 
 Users can send Sats / eCash to each other over local radio transport inside a city or another constrained coverage area.
 
 ### 6.5 Mapping and situational coordination
-The node supports offline-first mapping and exchange of cartographic / tactical objects for real-world coordination.
+The node provides an offline-first map of mesh contacts with positions, estimated radio range, and path topology for real-world coordination.
 
 ### 6.6 Community node deployment
 Communities and independent operators can deploy their own nodes and gradually build resilient autonomous infrastructure from them.
@@ -94,7 +94,10 @@ Communities and independent operators can deploy their own nodes and gradually b
 Blackbox already exists as a **working prototype**, not just a concept.
 
 Implemented or working components include:
-- Meshtastic integration as the current primary transport
+- MeshCore integration as the current primary transport (companion firmware over serial or TCP, flashed via flasher.meshcore.io)
+- contacts discovered via adverts and keyed by public key (no central node DB)
+- end-to-end encrypted DMs with delivery confirmation, channels 0-7, room servers, and remote repeater administration
+- pull-based telemetry aggregation
 - local message transfer over mesh
 - eCash / value packet transport over the existing text channel using chunking
 - a local node acting as a service layer on top of mesh rather than just a radio device
@@ -120,14 +123,14 @@ The system should remain useful even under complete absence of external network 
 In critical environments, reliability and predictability matter more than feature excess.
 
 ### 8.5 Interoperability
-Blackbox should integrate where possible with open ecosystems such as Meshtastic, ATAK/TAK-style workflows, Cashu, local network tools, and future transport layers.
+Blackbox should integrate where possible with open ecosystems such as MeshCore, Cashu, local network tools, and future transport layers.
 
 ## 9. Technical Approach
 
 Blackbox is structured as a local node with multiple layers:
 
 ### Transport layer
-- Meshtastic / LoRa as the current primary transport
+- MeshCore / LoRa as the current primary transport
 - future support for new generations of LoRa chips with significantly higher data throughput
 - potential support for other transport layers suitable for off-grid deployment
 
@@ -159,7 +162,7 @@ Focus on stability, usability, and practical operation within a city:
 - better message delivery reliability
 - better UX for local users
 - clearer deployment flow
-- more robust Meshtastic integration
+- more robust MeshCore integration
 - stronger telemetry and observability
 - simpler community node kit setup
 
@@ -188,7 +191,6 @@ This increases the usefulness of the node even where payments are not the primar
 Focus on situational awareness:
 - better offline maps
 - object sharing
-- TAK-like workflows
 - volunteer / field coordination use cases
 
 This strengthens the fit for NGOs, emergency-adjacent actors, and field teams.
