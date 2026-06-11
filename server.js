@@ -1,7 +1,6 @@
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
-const zlib = require("zlib");
 const { spawnSync, spawn } = require("child_process");
 const { webcrypto } = require("crypto");
 
@@ -21,7 +20,6 @@ const parsedPort = Number.parseInt(process.env.PORT || "", 10);
 const PORT = Number.isInteger(parsedPort) && parsedPort > 0 ? parsedPort : DEFAULT_PORT;
 const STATIC_DIR = path.join(__dirname, "static");
 const DATA_DIR = path.join(__dirname, "data");
-const TAK_CAPTURE_DIR = path.join(DATA_DIR, "tak_capture");
 const DB_FILE = path.join(DATA_DIR, "messages.json");
 const LOGS_FILE = path.join(DATA_DIR, "logs.json");
 const NODES_FILE = path.join(DATA_DIR, "nodes.json");
@@ -201,8 +199,6 @@ const MESH_PACKET_MAX_BYTES = 120;
 const MESH_PACKET_MAX_BYTES_CASHU = 72;
 const MESH_PACKET_BATCH_DELAY_MS = 3200;
 const MESH_PACKET_BATCH_DELAY_MS_CASHU = 6000;
-const MESH_ACK_RETRY_COUNT = 1;
-const MESH_ACK_RETRY_DELAY_MS = 1800;
 const WEATHER_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_NODE_ONLINE_WINDOW_MINUTES = 30;
 const ALLOWED_NODE_ONLINE_WINDOW_MINUTES = new Set([5, 15, 30, 45, 60]);
@@ -213,7 +209,6 @@ const MIN_VALID_MODEL_BYTES = 1024 * 1024;
 
 const sessions = new Map();
 const clients = new Set();
-const latestTakFeatures = new Map(); // uid -> feature
 let nodesRefreshInterval = null;
 let nodesStatusPushInterval = null;
 let messages = [];
@@ -227,16 +222,14 @@ let testCashuData = { mintUrl: TEST_CASHU_DEFAULT_MINT, proofs: [], pendingInvoi
 let swaps = [];
 let meshtasticStatus = { connected: false, mode: "starting", error: null };
 let localMeshNodeId = null;
-// Observed mesh links from relayNode field in packets: key = "fromMeshNum|viaMeshNum"
-const MESH_LINK_TTL_MS = 5 * 60 * 1000;
-let meshLinks = {};
 let currentModelName = DEFAULT_MODEL_NAME;
 let llmStatus = { connected: false, mode: "starting", model: currentModelName, error: null, switching: false };
 let meshSendQueue = Promise.resolve();
 // Map clientMsgId -> message.id (for linking sent event to outgoing message)
 const pendingMsgByClientId = new Map();
+const pendingTelemetryWaiters = new Map();
+const pendingPathWaiters = new Map();
 // Map packetId -> message.id (for linking routing ack to outgoing message)
-const pendingMsgByPacketId = new Map();
 let modelManagerOperation = {
   active: false,
   action: null,
@@ -251,7 +244,6 @@ let modelManagerOperation = {
 let modelDownloadAbortController = null;
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
-fs.mkdirSync(TAK_CAPTURE_DIR, { recursive: true });
 if (fs.existsSync(DB_FILE)) {
   try {
     messages = JSON.parse(fs.readFileSync(DB_FILE, "utf8"));
@@ -341,29 +333,49 @@ if (JSON.stringify(appSettings.aiSettings) !== loadedAiSettingsJson) {
   persistSettings();
 }
 
-function getConfiguredMeshtasticPort() {
-  return typeof appSettings.meshtasticPort === "string" && appSettings.meshtasticPort.trim()
-    ? appSettings.meshtasticPort.trim()
+// One-time wipe on first MeshCore run: Meshtastic node IDs no longer exist, so
+// chat history, node cache, favorites, and wallet client approvals start fresh.
+if (!appSettings.meshcoreEra) {
+  appSettings.meshcoreEra = true;
+  delete appSettings.meshtasticPort;
+  delete appSettings.takMeshtasticChannel;
+  delete appSettings.takHopLimit;
+  appSettings.favoriteNodes = [];
+  appSettings.walletExternalClients = [];
+  knownNodes = {};
+  messages = [];
+  try { fs.writeFileSync(NODES_FILE, "{}"); } catch {}
+  try { fs.writeFileSync(DB_FILE, "[]"); } catch {}
+  persistSettings();
+}
+
+function getConfiguredRadioTransport() {
+  return appSettings.radioTransport === "tcp" ? "tcp" : "serial";
+}
+
+function getConfiguredRadioAddress() {
+  if (process.env.MESHCORE_ADDRESS) {
+    return String(process.env.MESHCORE_ADDRESS).trim();
+  }
+  return typeof appSettings.radioAddress === "string" && appSettings.radioAddress.trim()
+    ? appSettings.radioAddress.trim()
     : "";
 }
 
-function getConfiguredTakChannel() {
-  return normalizeChannelIndex(appSettings.takMeshtasticChannel, 0);
-}
-
-function setConfiguredTakChannel(channel) {
-  appSettings.takMeshtasticChannel = normalizeChannelIndex(channel, 0);
+function setConfiguredRadio(transport, address) {
+  appSettings.radioTransport = transport === "tcp" ? "tcp" : "serial";
+  const value = String(address || "").trim();
+  if (value) {
+    appSettings.radioAddress = value;
+  } else {
+    delete appSettings.radioAddress;
+  }
   persistSettings();
 }
 
 function normalizeChannelIndex(value, fallback = 0) {
   const parsed = Number.parseInt(String(value ?? fallback), 10);
   return Number.isInteger(parsed) && parsed >= 0 && parsed <= 7 ? parsed : fallback;
-}
-
-function getConfiguredTakHopLimit() {
-  const value = Number.parseInt(String(appSettings.takHopLimit ?? "3"), 10);
-  return Number.isInteger(value) && value >= 0 && value <= 7 ? value : 3;
 }
 
 function getConfiguredNodeOnlineWindowMinutes() {
@@ -375,12 +387,6 @@ function getConfiguredNodeOnlineWindowMs() {
   return getConfiguredNodeOnlineWindowMinutes() * 60 * 1000;
 }
 
-function setConfiguredTakHopLimit(hopLimit) {
-  const value = Number.parseInt(String(hopLimit ?? "3"), 10);
-  appSettings.takHopLimit = Number.isInteger(value) && value >= 0 && value <= 7 ? value : 3;
-  persistSettings();
-}
-
 function setConfiguredNodeOnlineWindowMinutes(value) {
   const parsed = Number.parseInt(String(value ?? DEFAULT_NODE_ONLINE_WINDOW_MINUTES), 10);
   appSettings.nodeOnlineWindowMinutes = ALLOWED_NODE_ONLINE_WINDOW_MINUTES.has(parsed)
@@ -389,15 +395,6 @@ function setConfiguredNodeOnlineWindowMinutes(value) {
   persistSettings();
 }
 
-function setConfiguredMeshtasticPort(port) {
-  const value = String(port || "").trim();
-  if (value) {
-    appSettings.meshtasticPort = value;
-  } else {
-    delete appSettings.meshtasticPort;
-  }
-  persistSettings();
-}
 
 function isWalletExternalClientsEnabled() {
   return Boolean(appSettings.walletExternalClientsEnabled);
@@ -447,9 +444,8 @@ function removeWalletExternalClient(nodeId) {
 function getMeshtasticStatusPayload(overrides = {}) {
   return {
     ...meshtasticStatus,
-    selectedPort: getConfiguredMeshtasticPort() || null,
-    takChannel: getConfiguredTakChannel(),
-    takHopLimit: getConfiguredTakHopLimit(),
+    transport: getConfiguredRadioTransport(),
+    selectedPort: getConfiguredRadioAddress() || null,
     nodeOnlineWindowMinutes: getConfiguredNodeOnlineWindowMinutes(),
     ...overrides,
   };
@@ -2436,7 +2432,6 @@ function buildSummaryCommandContext() {
       onlineNodes: onlineNodes.length,
       offlineNodes: offlineNodes.length,
       liveNodes: liveNodes.length,
-      activeLinks: Array.isArray(payload.meshLinks) ? payload.meshLinks.length : 0,
       health: networkHealth,
       approxLoad,
     },
@@ -2554,7 +2549,6 @@ function buildActivityCommandContext() {
     network: {
       totalNodes: nodes.length,
       onlineNodes: onlineNodes.length,
-      activeLinks: Array.isArray(payload.meshLinks) ? payload.meshLinks.length : 0,
       approxLoad,
     },
     activity,
@@ -2608,21 +2602,85 @@ function parseLocalSlashCommand(prompt) {
     return null;
   }
   const command = normalized.split(/\s+/, 1)[0].toLowerCase();
-  if (command === "/help" || command === "/summary" || command === "/weather" || command === "/activity" || command === "/battery" || command === "/nodecheck") {
+  if (command === "/help" || command === "/summary" || command === "/weather" || command === "/activity" || command === "/battery" || command === "/nodecheck" || command === "/trace" || command === "/advert") {
     return { name: command, raw: normalized };
   }
   return null;
 }
 
-function buildNodeCheckContext(nodeArg) {
-  const q = String(nodeArg || "").trim().toLowerCase();
-  if (!q) return { error: "No node specified" };
-  const node = Object.values(knownNodes).find((n) =>
+function findKnownNodeByQuery(query) {
+  const q = String(query || "").trim().toLowerCase();
+  if (!q) return null;
+  return Object.values(knownNodes).find((n) =>
     (n.shortName || "").toLowerCase().includes(q) ||
     (n.longName  || "").toLowerCase().includes(q) ||
     (n.userId    || "").toLowerCase() === q ||
-    (n.id        || "").toLowerCase() === q
-  );
+    (n.id        || "").toLowerCase() === q ||
+    (n.id        || "").toLowerCase().startsWith(q)
+  ) || null;
+}
+
+function requestContactTelemetry(nodeId, timeoutMs = 30000) {
+  return new Promise((resolve) => {
+    const key = String(nodeId || "");
+    const timer = setTimeout(() => {
+      pendingTelemetryWaiters.delete(key);
+      resolve(null);
+    }, timeoutMs);
+    pendingTelemetryWaiters.set(key, (payload) => {
+      clearTimeout(timer);
+      pendingTelemetryWaiters.delete(key);
+      resolve(payload);
+    });
+    try {
+      sendBridge({ type: "request_telemetry", payload: { contactId: key } });
+    } catch {
+      clearTimeout(timer);
+      pendingTelemetryWaiters.delete(key);
+      resolve(null);
+    }
+  });
+}
+
+function requestTracePath(nodeId, timeoutMs = 30000) {
+  return new Promise((resolve) => {
+    const key = String(nodeId || "");
+    const timer = setTimeout(() => {
+      pendingPathWaiters.delete(key);
+      resolve(null);
+    }, timeoutMs);
+    pendingPathWaiters.set(key, (payload) => {
+      clearTimeout(timer);
+      pendingPathWaiters.delete(key);
+      resolve(payload);
+    });
+    try {
+      sendBridge({ type: "trace_path", payload: { contactId: key } });
+    } catch {
+      clearTimeout(timer);
+      pendingPathWaiters.delete(key);
+      resolve(null);
+    }
+  });
+}
+
+function buildLocalBatteryReply() {
+  const battery = meshtasticStatus?.battery || {};
+  const level = Number(battery.level || 0);
+  if (!level) {
+    return "No local battery reading available yet (radio not connected?).";
+  }
+  const volts = (level / 1000).toFixed(2);
+  const storage = battery.total_kb
+    ? ` Storage: ${battery.used_kb ?? "?"}/${battery.total_kb} KB used.`
+    : "";
+  return `Local node battery: ${volts}V (${level} mV).${storage} Use /nodecheck <name> for a remote node.`;
+}
+
+function buildNodeCheckContext(nodeArg) {
+  const q = String(nodeArg || "").trim().toLowerCase();
+  if (!q) return { error: "No node specified" };
+  const node = findKnownNodeByQuery(q);
   if (!node) return { error: "Node not found", query: nodeArg };
   const now = Date.now();
   const lastSeen = node.lastSeenAt || node.lastHeard || null;
@@ -2635,10 +2693,7 @@ function buildNodeCheckContext(nodeArg) {
       shortName: node.shortName,
       longName: node.longName,
       role: node.role,
-      meshtasticRole: node.meshtasticRole,
-      hardware: node.hardware,
-      modemPreset: node.modemPreset,
-      region: node.region,
+      contactType: node.contactType,
     },
     status: {
       online: isNodeOnline(node),
@@ -2669,7 +2724,7 @@ function buildNodeCheckContext(nodeArg) {
 function buildSlashCommandSystemPrompt(commandName) {
   if (commandName === "/weather") {
     return [
-      "You are an operations assistant for an offline Meshtastic network dashboard.",
+      "You are an operations assistant for an offline MeshCore mesh network dashboard.",
       "You are given structured telemetry about weather and environment observations collected from nodes.",
       "Summarize only the supplied data. Do not invent sensors, forecasts, or internet weather.",
       "Prefer fresh weather data, but if none is fresh then explicitly fall back to the latest known historical data, including offline nodes.",
@@ -2679,7 +2734,7 @@ function buildSlashCommandSystemPrompt(commandName) {
   }
   if (commandName === "/activity") {
     return [
-      "You are an operations assistant for an offline Meshtastic network dashboard.",
+      "You are an operations assistant for an offline MeshCore mesh network dashboard.",
       "You are given structured telemetry about recent message flow and node activity.",
       "Summarize only the supplied data. Do not invent RF throughput or packet utilization metrics.",
       "Treat 'approxLoad' as a coarse activity estimate based on observed recent events.",
@@ -2689,7 +2744,7 @@ function buildSlashCommandSystemPrompt(commandName) {
   }
   if (commandName === "/battery") {
     return [
-      "You are an operations assistant for an offline Meshtastic network dashboard.",
+      "You are an operations assistant for an offline MeshCore mesh network dashboard.",
       "You are given structured telemetry about node battery levels and freshness.",
       "Summarize only the supplied data. Do not invent charge trends or power consumption not present in the data.",
       "Highlight critical and low-battery nodes first, mention the overall battery picture, and keep the answer concise and practical.",
@@ -2698,7 +2753,7 @@ function buildSlashCommandSystemPrompt(commandName) {
   }
   if (commandName === "/nodecheck") {
     return [
-      "You are an operations assistant for an offline Meshtastic network dashboard.",
+      "You are an operations assistant for an offline MeshCore mesh network dashboard.",
       "You are given full telemetry for a single node.",
       "Give a concise health assessment covering: signal quality (SNR, hops), battery/voltage, last seen time, sensor/environment data if present, neighbors.",
       "Flag anything unusual or worth attention. Summarize only the supplied data — do not invent metrics.",
@@ -2706,7 +2761,7 @@ function buildSlashCommandSystemPrompt(commandName) {
     ].join(" ");
   }
   return [
-    "You are an operations assistant for an offline Meshtastic network dashboard.",
+    "You are an operations assistant for an offline MeshCore mesh network dashboard.",
     "You are given structured telemetry about node presence, activity, battery state, and recent message flow.",
     "Summarize only the supplied data. Do not invent topology, packet loss, or utilization metrics that are not present.",
     "Treat 'approxLoad' as a coarse activity estimate based on recent observed events, not a measured RF utilization value.",
@@ -2717,7 +2772,7 @@ function buildSlashCommandSystemPrompt(commandName) {
 
 function buildSlashCommandFallback(commandName, context) {
   if (commandName === "/help") {
-    return "/summary - network stats\n/weather - conditions\n/activity - recent events\n/battery - power levels\n/nodecheck <name> - node status\n/wallet - balance\nsend <amount> <node> - send Cashu";
+    return "/summary - network stats\n/weather - conditions\n/activity - recent events\n/battery - local power\n/nodecheck <name> - live node status\n/trace <name> - route + SNR\n/advert [flood] - announce\n/wallet - balance\nsend <amount> <node> - send Cashu";
   }
   if (commandName === "/weather") {
     if (!context.weather.totalSources) {
@@ -2805,16 +2860,47 @@ async function generateSlashCommandReply(peerId, slashCommand) {
   if (slashCommand.name === "/help") {
     return buildSlashCommandFallback("/help", {});
   }
+  if (slashCommand.name === "/battery") {
+    // MeshCore telemetry is pull-based; only the local node answers instantly.
+    return buildLocalBatteryReply();
+  }
+  if (slashCommand.name === "/advert") {
+    const flood = slashCommand.raw.toLowerCase().includes("flood");
+    try {
+      sendBridge({ type: "send_advert", payload: { flood } });
+      return `Advert sent (${flood ? "flood" : "zero-hop"}).`;
+    } catch (error) {
+      return `Advert failed: ${error.message}`;
+    }
+  }
+  if (slashCommand.name === "/trace") {
+    const arg = slashCommand.raw.slice("/trace".length).trim();
+    const node = findKnownNodeByQuery(arg);
+    if (!node) {
+      return `Trace: node not found${arg ? ` ("${arg}")` : " — usage: /trace <name>"}.`;
+    }
+    const result = await requestTracePath(node.id);
+    if (!result || !result.ok) {
+      return `Trace to ${node.shortName || node.id.slice(0, 8)} failed: ${result?.reason || "timeout"}.`;
+    }
+    const hops = (result.trace?.path || [])
+      .map((hop, i) => `${i + 1}. ${hop.hash ?? "?"} (${hop.snr ?? "?"} dB)`)
+      .join("\n");
+    return `Trace to ${node.shortName || node.id.slice(0, 8)} (${result.trace?.path_len ?? "?"} hops):\n${hops || "direct"}`;
+  }
   const aiSettings = getAiSettingsPayload();
   let context;
   if (slashCommand.name === "/weather") {
     context = buildWeatherCommandContext();
   } else if (slashCommand.name === "/activity") {
     context = buildActivityCommandContext();
-  } else if (slashCommand.name === "/battery") {
-    context = buildBatteryCommandContext();
   } else if (slashCommand.name === "/nodecheck") {
     const nodeArg = slashCommand.raw.slice("/nodecheck".length).trim();
+    const liveNode = findKnownNodeByQuery(nodeArg);
+    if (liveNode) {
+      // Pull fresh telemetry over the mesh before assessing (decided: targeted, ~30s).
+      await requestContactTelemetry(liveNode.id);
+    }
     context = buildNodeCheckContext(nodeArg);
     if (context.error) {
       return buildSlashCommandFallback(slashCommand.name, context);
@@ -3127,18 +3213,7 @@ function isNodeOnline(node) {
 }
 
 function getNodesPayload() {
-  const now = Date.now();
   const nodes = Object.values(knownNodes);
-  const onlineMeshNums = new Set(
-    nodes
-      .filter((node) => isNodeOnline(node) && node.meshNum != null)
-      .map((node) => String(node.meshNum))
-  );
-  const activeLinks = Object.values(meshLinks).filter((l) =>
-    now - l.lastSeen < MESH_LINK_TTL_MS &&
-    onlineMeshNums.has(String(l.from ?? "")) &&
-    onlineMeshNums.has(String(l.via ?? ""))
-  );
   return {
     nodes: nodes
       .sort((a, b) => {
@@ -3162,40 +3237,13 @@ function getNodesPayload() {
         live: Array.isArray(node.observedPortnums) && node.observedPortnums.length > 0,
         favorite: isFavoriteNode(node.userId || node.id),
       })),
-    meshLinks: activeLinks,
   };
 }
 
-// Track observed relay connections from packet relayNode field (Meshtastic fw 2.3+)
-function trackMeshLink(payload) {
-  if (!payload) return;
-  const relayNode = payload.relayNode;
-  if (!relayNode) return;
-  const senderNode = findNodeByMeshNum(payload.sender);
-  const relayNodeObj = findNodeByMeshNumInt(relayNode);
-  if (!senderNode || !relayNodeObj) return;
-  const snr = payload.rxSnr ?? null;
-  const now = Date.now();
-  // Link: sender <-> relay
-  const key = `${senderNode.meshNum}|${relayNodeObj.meshNum}`;
-  meshLinks[key] = { from: senderNode.meshNum, via: relayNodeObj.meshNum, snr, lastSeen: now };
-}
-
-function findNodeByMeshNum(userId) {
-  // userId is "!hexid" format; find by userId key
-  return knownNodes[String(userId || "")] || null;
-}
-
-function findNodeByMeshNumInt(meshNumInt) {
-  // meshNumInt is an integer node num; find node whose meshNum matches
-  const target = String(meshNumInt);
-  return Object.values(knownNodes).find((n) => String(n.meshNum || "") === target) || null;
-}
-
-function mergeBridgeNodes(nodes) {
+function mergeBridgeContacts(contacts) {
   let changed = false;
-  for (const bridgeNode of nodes || []) {
-    const nodeId = String(bridgeNode.userId || bridgeNode.id || "").trim();
+  for (const contact of contacts || []) {
+    const nodeId = String(contact.id || "").trim();
     if (!nodeId) {
       continue;
     }
@@ -3207,38 +3255,26 @@ function mergeBridgeNodes(nodes) {
       lastMessage: "",
       lastSeenAt: null,
       weather: null,
-      observedPortnums: [],
-      lastDecoded: null,
     };
 
     const nextNode = {
       ...existing,
       id: nodeId,
-      meshNum: bridgeNode.id || existing.meshNum || null,
-      userId: bridgeNode.userId || existing.userId || nodeId,
-      shortName: bridgeNode.shortName || existing.shortName || "",
-      longName: bridgeNode.longName || existing.longName || "",
-      hardware: bridgeNode.hardware || existing.hardware || "",
-      meshtasticRole: bridgeNode.meshtasticRole || existing.meshtasticRole || "",
-      modemPreset: bridgeNode.modemPreset || existing.modemPreset || "",
-      meshHopLimit: bridgeNode.meshHopLimit ?? existing.meshHopLimit ?? null,
-      region: bridgeNode.region || existing.region || "UNSET",
-      txPower: bridgeNode.txPower ?? existing.txPower ?? null,
-      nodeRole: bridgeNode.nodeRole || existing.nodeRole || "CLIENT",
-      lastHeard: bridgeNode.lastHeard || existing.lastHeard || null,
-      snr: bridgeNode.snr ?? existing.snr ?? null,
-      hopsAway: bridgeNode.hopsAway ?? existing.hopsAway ?? null,
-      batteryLevel: bridgeNode.batteryLevel ?? existing.batteryLevel ?? null,
-      voltage: bridgeNode.voltage ?? existing.voltage ?? null,
-      latitude: bridgeNode.latitude ?? existing.latitude ?? null,
-      longitude: bridgeNode.longitude ?? existing.longitude ?? null,
-      environmentMetrics: bridgeNode.environmentMetrics || existing.environmentMetrics || null,
-      neighbors: bridgeNode.neighbors && bridgeNode.neighbors.length > 0 ? bridgeNode.neighbors : (existing.neighbors || []),
-      raw: bridgeNode.raw || existing.raw || null,
-      observedPortnums: existing.observedPortnums || [],
-      lastDecoded: existing.lastDecoded || null,
+      userId: nodeId,
+      shortName: contact.name || existing.shortName || "",
+      longName: contact.name || existing.longName || "",
+      contactType: contact.type || existing.contactType || "unknown",
+      lastHeard: contact.lastAdvert || existing.lastHeard || null,
+      hopsAway: contact.outPathLen >= 0 ? contact.outPathLen : null,
+      outPath: contact.outPath || "",
+      isFlood: contact.isFlood !== false,
+      batteryLevel: existing.batteryLevel ?? null,
+      voltage: existing.voltage ?? null,
+      snr: existing.snr ?? null,
+      latitude: contact.latitude ?? existing.latitude ?? null,
+      longitude: contact.longitude ?? existing.longitude ?? null,
+      environmentMetrics: existing.environmentMetrics || null,
     };
-    nextNode.weather = extractWeatherFromNode(nextNode) || existing.weather || null;
     nextNode.role = inferNodeRoleFromMeta(nextNode);
     if (!hasRealWeatherData(nextNode)) {
       nextNode.weather = null;
@@ -3255,85 +3291,32 @@ function mergeBridgeNodes(nodes) {
   }
 }
 
-function mergeTelemetry(sender, payload) {
-  const nodeId = String(sender || "").trim();
-  if (!nodeId) {
+function mergeLppTelemetry(contactId, payload) {
+  const node = knownNodes[String(contactId || "")];
+  if (!node || !payload?.ok) {
     return;
   }
-
-  const existing = knownNodes[nodeId] || {
-    id: nodeId,
-    role: "generic",
-    tags: [],
-    lastMessage: "",
-    lastSeenAt: null,
-    weather: null,
-    observedPortnums: [],
-    lastDecoded: null,
-  };
-
-  const telemetry = payload?.telemetry || {};
-  const environmentMetrics =
-    telemetry.environmentMetrics ||
-    telemetry.environment ||
-    telemetry.envMetrics ||
-    existing.environmentMetrics ||
-    {};
-  const deviceMetrics =
-    telemetry.deviceMetrics ||
-    telemetry.device ||
-    existing.deviceMetrics ||
-    {};
-
-  knownNodes[nodeId] = {
-    ...existing,
-    id: nodeId,
-    userId: existing.userId || nodeId,
-    environmentMetrics,
-    deviceMetrics,
-    batteryLevel: deviceMetrics.batteryLevel ?? existing.batteryLevel ?? null,
-    voltage: deviceMetrics.voltage ?? existing.voltage ?? null,
-    lastSeenAt: new Date().toISOString(),
-    rawTelemetry: telemetry,
-    lastDecoded: telemetry,
-    observedPortnums: Array.from(new Set([...(existing.observedPortnums || []), String(payload?.portnum || "TELEMETRY_APP")])),
-  };
-  knownNodes[nodeId].weather = extractWeatherFromNode(knownNodes[nodeId]) || existing.weather || null;
-  knownNodes[nodeId].role = inferNodeRoleFromMeta(knownNodes[nodeId]);
-  if (!hasRealWeatherData(knownNodes[nodeId])) {
-    knownNodes[nodeId].weather = null;
+  const env = { ...(node.environmentMetrics || {}) };
+  for (const entry of payload.lpp || []) {
+    const type = String(entry?.type_name || entry?.type || "").toLowerCase();
+    const value = entry?.value;
+    if (value == null) continue;
+    if (type.includes("temperature")) env.temperature = value;
+    else if (type.includes("humidity")) env.relativeHumidity = value;
+    else if (type.includes("barometer")) env.barometricPressure = value;
+    else if (type.includes("voltage")) node.voltage = Number(value) || node.voltage;
+    else if (type.includes("percentage")) node.batteryLevel = Number(value) || node.batteryLevel;
+    else if (type.includes("gps") && typeof value === "object") {
+      if (value.latitude != null) node.latitude = value.latitude;
+      if (value.longitude != null) node.longitude = value.longitude;
+    }
   }
-  persistNodes();
-  broadcast("nodes", getNodesPayload());
-}
-
-function mergePacket(sender, payload) {
-  const nodeId = String(sender || "").trim();
-  if (!nodeId) {
-    return;
+  node.environmentMetrics = Object.keys(env).length ? env : node.environmentMetrics;
+  node.lastTelemetryAt = new Date().toISOString();
+  node.weather = extractWeatherFromNode(node) || node.weather || null;
+  if (!hasRealWeatherData(node)) {
+    node.weather = null;
   }
-
-  const existing = knownNodes[nodeId] || {
-    id: nodeId,
-    role: "generic",
-    tags: [],
-    lastMessage: "",
-    lastSeenAt: null,
-    weather: null,
-    observedPortnums: [],
-    lastDecoded: null,
-  };
-
-  const portnum = String(payload?.portnum || "UNKNOWN");
-  knownNodes[nodeId] = {
-    ...existing,
-    id: nodeId,
-    userId: existing.userId || nodeId,
-    lastSeenAt: new Date().toISOString(),
-    observedPortnums: Array.from(new Set([...(existing.observedPortnums || []), portnum])),
-    lastDecoded: payload?.decoded || existing.lastDecoded || null,
-    lastPacket: payload?.packet || existing.lastPacket || null,
-  };
   persistNodes();
   broadcast("nodes", getNodesPayload());
 }
@@ -3459,416 +3442,7 @@ function broadcast(type, payload) {
   }
 }
 
-// ── TAK / CoT helpers ─────────────────────────────────────────────────────────
-function _hexToArgbInt(hex) {
-  try {
-    const r = parseInt(hex.slice(1, 3), 16);
-    const g = parseInt(hex.slice(3, 5), 16);
-    const b = parseInt(hex.slice(5, 7), 16);
-    const v = ((0xFF << 24) | (r << 16) | (g << 8) | b) >>> 0;
-    return v > 0x7FFFFFFF ? v - 0x100000000 : v;
-  } catch { return -16711936; }
-}
-function _argbIntToHexColor(value, fallback = "#4a9eff") {
-  try {
-    const n = Number(value);
-    if (!Number.isFinite(n)) return fallback;
-    const unsigned = (n >>> 0);
-    const r = ((unsigned >> 16) & 0xFF).toString(16).padStart(2, "0");
-    const g = ((unsigned >> 8) & 0xFF).toString(16).padStart(2, "0");
-    const b = (unsigned & 0xFF).toString(16).padStart(2, "0");
-    return `#${r}${g}${b}`;
-  } catch {
-    return fallback;
-  }
-}
-function _hexToAlphaArgbInt(hex, alpha = 0x7f) {
-  try {
-    const r = parseInt(hex.slice(1, 3), 16);
-    const g = parseInt(hex.slice(3, 5), 16);
-    const b = parseInt(hex.slice(5, 7), 16);
-    const a = Math.max(0, Math.min(255, Number(alpha) || 0));
-    const v = ((a << 24) | (r << 16) | (g << 8) | b) >>> 0;
-    return v > 0x7FFFFFFF ? v - 0x100000000 : v;
-  } catch { return 2147418112; }
-}
-function _cotNow() { return new Date().toISOString().replace(/\.\d{3}Z$/, "Z"); }
-function _cotStale() { return new Date(Date.now() + 2 * 60000).toISOString().replace(/\.\d{3}Z$/, "Z"); }
-function _cotPast(ms = 1000) { return new Date(Date.now() - ms).toISOString().replace(/\.\d{3}Z$/, "Z"); }
-function _xmlEsc(s) { return String(s || "").replace(/[<>&"]/g, c => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" }[c])); }
-function _cotDoc(eventXml) { return `<?xml version='1.0' encoding='UTF-8' standalone='yes'?>${eventXml}`; }
-function _cotPrecisionLocation(tagName = "precisionLocation", geopointsrc = "???") {
-  return `<${tagName} geopointsrc="${geopointsrc}" altsrc="???"></${tagName}>`;
-}
-function _cotMarti() { return `<marti></marti>`; }
-function _cotGeofence() {
-  return `<__geofence elevationMonitored="false" tracking="false" monitor="All" trigger="Both" maxElevation="NaN" minElevation="NaN"></__geofence>`;
-}
-function _cotRemarks(remarks = "") {
-  const text = String(remarks || "").trim();
-  return text ? `<remarks>${_xmlEsc(text)}</remarks>` : "";
-}
-function _hexToTakColorHex(color = "#4a9eff", alpha = 0xff) {
-  try {
-    const clean = String(color).trim().replace(/^#/, "");
-    const hex = clean.length === 3
-      ? clean.split("").map(ch => ch + ch).join("")
-      : clean.slice(0, 6);
-    const a = Math.max(0, Math.min(255, Number(alpha) || 0)).toString(16).padStart(2, "0").toUpperCase();
-    return `${a}${hex.toUpperCase()}`;
-  } catch {
-    return alpha >= 0xff ? "FF4A9EFF" : "7F4A9EFF";
-  }
-}
-function _cotKmlStyleLink(uid, color = "#4a9eff", fillColor = null, strokeWeight = 1) {
-  return `<link type="b-x-KmlStyle" relation="p-c" uid="${uid}.style"><Style><LineStyle><color>${_hexToTakColorHex(color, 0xff)}</color><width>${Math.max(1, Number(strokeWeight) || 1)}</width></LineStyle><PolyStyle><color>${_hexToTakColorHex(fillColor || color, 0x7f)}</color></PolyStyle></Style></link>`;
-}
 
-function _fmtCoord(n) { return parseFloat(n.toFixed(6)); }
-function _fmtMeters(n) { return Number.parseFloat(String(n || 0)); }
-function _closeRing(points) {
-  const list = Array.isArray(points) ? points.slice() : [];
-  if (list.length < 3) return list;
-  const first = list[0];
-  const last = list[list.length - 1];
-  if (!first || !last) return list;
-  if (Math.abs(first[0] - last[0]) > 1e-7 || Math.abs(first[1] - last[1]) > 1e-7) {
-    list.push(first);
-  }
-  return list;
-}
-function _latLngOffsetMeters(center, eastMeters, northMeters) {
-  const lat = Number(center?.[0] || 0);
-  const lon = Number(center?.[1] || 0);
-  const mPerDegLat = 111320;
-  const mPerDegLon = Math.max(1, 111320 * Math.cos(lat * Math.PI / 180));
-  return [lat + (northMeters / mPerDegLat), lon + (eastMeters / mPerDegLon)];
-}
-function rectangleToLatLngs(center, lengthMeters, widthMeters, angleDeg = 0) {
-  if (!Array.isArray(center) || center.length < 2) return [];
-  const halfL = Number(lengthMeters || 0) / 2;
-  const halfW = Number(widthMeters || 0) / 2;
-  if (!(halfL > 0) || !(halfW > 0)) return [];
-  const angle = (Number(angleDeg) || 0) * Math.PI / 180;
-  const corners = [
-    [-halfW, -halfL],
-    [ halfW, -halfL],
-    [ halfW,  halfL],
-    [-halfW,  halfL],
-  ];
-  return corners.map(([x, y]) => {
-    const east = x * Math.cos(angle) - y * Math.sin(angle);
-    const north = x * Math.sin(angle) + y * Math.cos(angle);
-    return _latLngOffsetMeters(center, east, north);
-  });
-}
-function _cotShapeDetail({ uid, label, color, fillColor, strokeWeight, strokeStyle, remarks = "", shapeXml, extraDetailXml = "", includeRemarks = true, includeGeofence = true }) {
-  const escaped = _xmlEsc(label || "");
-  const strokeArgb = _hexToArgbInt(color || "#4a9eff");
-  const fillArgb = _hexToAlphaArgbInt(fillColor || color || "#4a9eff", 0x7f);
-  const width = Math.max(1, Number(strokeWeight) || 1);
-  const style = _xmlEsc(String(strokeStyle || "solid"));
-  return `<detail><contact endpoint="0.0.0.0:4242:tcp" callsign="${escaped || uid}"/><uid Droid="${escaped || uid}"/>${_cotPrecisionLocation("precisionLocation")}<strokeColor value="${strokeArgb}"/><fillColor value="${fillArgb}"/><strokeWeight value="${width}"/><strokeStyle value="${style}"/>${extraDetailXml}${_cotMarti()}${shapeXml}${includeGeofence ? _cotGeofence() : ""}${includeRemarks ? _cotRemarks(remarks || escaped) : ""}</detail>`;
-}
-
-function compressCotXml(xml) {
-  return zlib.deflateSync(Buffer.from(String(xml || ""), "utf8"), { level: 9 });
-}
-
-function reduceTakGeometryPoints(type, points, targetCount) {
-  if (!Array.isArray(points) || points.length === 0) return [];
-  const minPoints = type === "polygon" ? 3 : 2;
-  if (points.length <= targetCount || targetCount < minPoints) {
-    return points.slice();
-  }
-
-  if (type === "polygon") {
-    const result = [];
-    for (let i = 0; i < targetCount; i += 1) {
-      const idx = Math.min(points.length - 1, Math.floor((i * points.length) / targetCount));
-      result.push(points[idx]);
-    }
-    while (result.length < minPoints) {
-      result.push(points[Math.min(points.length - 1, result.length)]);
-    }
-    return result;
-  }
-
-  const result = [points[0]];
-  const interior = targetCount - 2;
-  for (let i = 1; i <= interior; i += 1) {
-    const idx = Math.min(points.length - 2, Math.floor((i * (points.length - 2)) / (interior + 1)) + 1);
-    result.push(points[idx]);
-  }
-  result.push(points[points.length - 1]);
-  return result;
-}
-
-function getTakFeatureCenter(feature) {
-  if (Array.isArray(feature.latlng) && feature.latlng.length >= 2) {
-    return [_fmtCoord(feature.latlng[0]), _fmtCoord(feature.latlng[1])];
-  }
-  if (Array.isArray(feature.latlngs) && feature.latlngs.length > 0) {
-    const lat = feature.latlngs.reduce((sum, point) => sum + point[0], 0) / feature.latlngs.length;
-    const lon = feature.latlngs.reduce((sum, point) => sum + point[1], 0) / feature.latlngs.length;
-    return [_fmtCoord(lat), _fmtCoord(lon)];
-  }
-  return null;
-}
-
-function featureToCot({ uid, type, latlng, latlngs, label, color, fillColor, strokeWeight, strokeStyle, remarks, cotType, iconsetPath, radiusMeters, rangeMeters, bearingDeg, majorMeters, minorMeters, angleDeg }) {
-  const now = _cotNow(), stale = _cotStale();
-  const argb = _hexToArgbInt(color || "#4a9eff");
-  const defaultLabel = type === "marker"
-    ? "WPT"
-    : type === "polyline"
-      ? "Route"
-      : type === "polygon"
-        ? "Shape"
-        : type === "circle"
-          ? "Circle"
-          : type === "ruler"
-            ? "Ruler"
-          : "Ellipse";
-  const name = _xmlEsc(label || defaultLabel);
-  const cotUid = String(uid || `tak-${Date.now()}`);
-  if (type === "marker" && latlng) {
-    const lat = _fmtCoord(latlng[0]), lon = _fmtCoord(latlng[1]);
-    const iconXml = iconsetPath ? `<usericon iconsetpath="${_xmlEsc(iconsetPath)}"/>` : "";
-    return _cotDoc(`<event version="2.0" uid="${cotUid}" type="${_xmlEsc(cotType || "b-m-p-w")}" time="${now}" start="${now}" stale="${stale}" how="h-e"><point lat="${lat}" lon="${lon}" hae="9999999.0" ce="9999999.0" le="9999999.0"/><detail><contact endpoint="0.0.0.0:4242:tcp" callsign="${name}"/><uid Droid="${name || cotUid}"/>${_cotPrecisionLocation("precisionLocation")}<color argb="${argb}"/>${iconXml}${_cotMarti()}${_cotRemarks(remarks)}<archive/></detail></event>`);
-  }
-  if (type === "polyline" && latlngs?.length >= 2) {
-    const cLat = _fmtCoord(latlngs.reduce((a, p) => a + p[0], 0) / latlngs.length);
-    const cLon = _fmtCoord(latlngs.reduce((a, p) => a + p[1], 0) / latlngs.length);
-    const verts = latlngs.map((p) => `<vertex lat="${_fmtCoord(p[0])}" lon="${_fmtCoord(p[1])}"/>`).join("");
-    return _cotDoc(`<event version="2.0" uid="${cotUid}" type="u-d-f" time="${now}" start="${now}" stale="${stale}" how="h-e"><point lat="${cLat}" lon="${cLon}" hae="9999999.0" ce="9999999.0" le="9999999.0"/>${_cotShapeDetail({ uid: cotUid, label: label || defaultLabel, color, fillColor: color, strokeWeight, strokeStyle, remarks, shapeXml: `<shape><lineString>${verts}</lineString>${_cotKmlStyleLink(cotUid, color, color, strokeWeight)}</shape>`, includeRemarks: true, includeGeofence: false })}</event>`);
-  }
-  if (type === "polygon" && latlngs?.length >= 3) {
-    const ring = _closeRing(latlngs);
-    const cLat = _fmtCoord(ring.reduce((a, p) => a + p[0], 0) / ring.length);
-    const cLon = _fmtCoord(ring.reduce((a, p) => a + p[1], 0) / ring.length);
-    const verts = ring.map(p => `<vertex lat="${_fmtCoord(p[0])}" lon="${_fmtCoord(p[1])}"/>`).join("");
-    return _cotDoc(`<event version="2.0" uid="${cotUid}" type="u-d-f" time="${now}" start="${now}" stale="${stale}" how="h-e"><point lat="${cLat}" lon="${cLon}" hae="9999999.0" ce="9999999.0" le="9999999.0"/>${_cotShapeDetail({ uid: cotUid, label: label || defaultLabel, color, fillColor, strokeWeight, strokeStyle, remarks, shapeXml: `<shape><polygon>${verts}</polygon>${_cotKmlStyleLink(cotUid, color, fillColor, strokeWeight)}</shape>`, includeRemarks: true })}</event>`);
-  }
-  if (type === "circle" && latlng && Number(radiusMeters) > 0) {
-    const lat = _fmtCoord(latlng[0]), lon = _fmtCoord(latlng[1]);
-    const r = _fmtMeters(radiusMeters);
-    return _cotDoc(`<event version="2.0" uid="${cotUid}" type="u-d-c-c" time="${now}" start="${now}" stale="${stale}" how="h-e"><point lat="${lat}" lon="${lon}" hae="9999999.0" ce="9999999.0" le="9999999.0"/>${_cotShapeDetail({ uid: cotUid, label: label || defaultLabel, color, fillColor, strokeWeight, strokeStyle, remarks, shapeXml: `<shape><ellipse major="${r}" angle="360.0" minor="${r}"></ellipse>${_cotKmlStyleLink(cotUid, color, fillColor, strokeWeight)}</shape>`, includeRemarks: true })}</event>`);
-  }
-  if (type === "ruler" && latlng && Number(rangeMeters) > 0) {
-    const lat = _fmtCoord(latlng[0]), lon = _fmtCoord(latlng[1]);
-    const range = _fmtMeters(rangeMeters);
-    const bearing = _fmtMeters(bearingDeg || 0);
-    return _cotDoc(`<event version="2.0" uid="${cotUid}" type="u-rb-a" time="${now}" start="${now}" stale="${stale}" how="h-e"><point lat="${lat}" lon="${lon}" hae="9999999.0" ce="9999999.0" le="9999999.0"/><detail><contact endpoint="0.0.0.0:4242:tcp" callsign="${name}"/><uid Droid="${name || cotUid}"/>${_cotRemarks(remarks)}${_cotPrecisionLocation("precisionLocation", "User")}<color value="${argb}"></color><range value="${range}"></range><rangeUnits value="1"></rangeUnits><bearing value="${bearing}"></bearing><bearingUnits value="0"></bearingUnits><inclination value="0.0"></inclination><northRef value="1"></northRef>${_cotMarti()}</detail></event>`);
-  }
-  if (type === "ellipse" && latlng && Number(majorMeters) > 0 && Number(minorMeters) > 0) {
-    const lat = _fmtCoord(latlng[0]), lon = _fmtCoord(latlng[1]);
-    const major = _fmtMeters(majorMeters);
-    const minor = _fmtMeters(minorMeters);
-    const angle = _fmtMeters(angleDeg || 0);
-    return _cotDoc(`<event version="2.0" uid="${cotUid}" type="u-d-c-e" time="${now}" start="${now}" stale="${stale}" how="h-e"><point lat="${lat}" lon="${lon}" hae="9999999.0" ce="9999999.0" le="9999999.0"/>${_cotShapeDetail({ uid: cotUid, label: label || defaultLabel, color, fillColor, strokeWeight, strokeStyle, remarks, shapeXml: `<shape><ellipse major="${major}" angle="${angle}" minor="${minor}"></ellipse>${_cotKmlStyleLink(cotUid, color, fillColor, strokeWeight)}</shape>`, includeRemarks: true })}</event>`);
-  }
-  return null;
-}
-
-function buildTakDeleteCot(feature = {}) {
-  const uid = String(feature.uid || "").trim();
-  if (!uid) return null;
-  const point = getTakFeatureCenter(feature) || [0, 0];
-  const now = _cotNow();
-  const stale = _cotPast(1000);
-  const rawType = String(feature.rawType || feature.cotType || (
-    feature.type === "marker" ? "b-m-p-w"
-      : feature.type === "circle" ? "u-d-c-c"
-      : feature.type === "ruler" ? "u-rb-a"
-      : "b-m-p-w"
-  ));
-  return _cotDoc(
-    `<event version="2.0" uid="${_xmlEsc(uid)}" type="${_xmlEsc(rawType)}" time="${now}" start="${now}" stale="${stale}" how="h-e">` +
-      `<point lat="${_fmtCoord(point[0])}" lon="${_fmtCoord(point[1])}" hae="9999999.0" ce="9999999.0" le="9999999.0"/>` +
-      `<detail><__forcedelete/></detail>` +
-    `</event>`
-  );
-}
-
-function buildTakCotForMesh(feature, maxPacketBytes = 233) {
-  const baseFeature = {
-    uid: feature.uid,
-    type: feature.type,
-    latlng: feature.latlng,
-    latlngs: Array.isArray(feature.latlngs) ? feature.latlngs.slice() : null,
-    radiusMeters: feature.radiusMeters ?? null,
-    rangeMeters: feature.rangeMeters ?? null,
-    bearingDeg: feature.bearingDeg ?? null,
-    majorMeters: feature.majorMeters ?? null,
-    minorMeters: feature.minorMeters ?? null,
-    angleDeg: feature.angleDeg ?? null,
-    label: feature.label || "",
-    color: feature.color || "#4a9eff",
-    fillColor: feature.fillColor || feature.color || "#4a9eff",
-    strokeWeight: feature.strokeWeight ?? 1,
-    strokeStyle: feature.strokeStyle || "solid",
-    remarks: feature.remarks || "",
-    cotType: feature.cotType || "",
-    iconsetPath: feature.iconsetPath || "",
-  };
-
-  const firstXml = featureToCot(baseFeature);
-  if (!firstXml) {
-    return { cotXml: null, error: "invalid feature type" };
-  }
-
-  const firstCompressed = compressCotXml(firstXml);
-  if (firstCompressed.length <= maxPacketBytes) {
-    return { cotXml: firstXml, simplified: false, compressedBytes: firstCompressed.length, transportHint: "direct" };
-  }
-
-  return {
-    cotXml: firstXml,
-    simplified: false,
-    compressedBytes: firstCompressed.length,
-    originalPoints: Array.isArray(baseFeature.latlngs) ? baseFeature.latlngs.length : null,
-    sentPoints: Array.isArray(baseFeature.latlngs) ? baseFeature.latlngs.length : null,
-    transportHint: "fountain",
-  };
-}
-
-function parseCotXml(xml) {
-  try {
-    const attr = (fragment, name) => fragment?.match(new RegExp(`\\b${name}=['"]([^'"]+)['"]`, "i"))?.[1] || "";
-    const uid = xml.match(/\buid=['"]([^'"]+)['"]/)?.[1] || "";
-    const type = xml.match(/\btype=['"]([^'"]+)['"]/)?.[1] || "";
-    const isForceDelete = /<__forcedelete\b/i.test(xml);
-    const staleValue = xml.match(/\bstale=['"]([^'"]+)['"]/)?.[1] || "";
-    const isStaleDelete = !!staleValue && !Number.isNaN(Date.parse(staleValue)) && Date.parse(staleValue) <= Date.now();
-    if (isForceDelete || isStaleDelete) {
-      return {
-        uid,
-        rawType: type,
-        cotType: type,
-        type: "delete",
-      };
-    }
-    const pm = xml.match(/<point[^>]+lat=['"]([^'"]+)['"][^>]+lon=['"]([^'"]+)['"]/);
-    const lat = pm ? parseFloat(pm[1]) : 0;
-    const lon = pm ? parseFloat(pm[2]) : 0;
-    const callsign = xml.match(/<contact[^>]+callsign=['"]([^'"]+)['"]/)?.[1] || "";
-    const remarks = xml.match(/<remarks>([^<]*)<\/remarks>/)?.[1] || "";
-    const label = callsign || remarks || "";
-    const iconsetPath = xml.match(/<usericon[^>]+iconsetpath=['"]([^'"]+)['"]/)?.[1] || "";
-    const vertexPoints = [...xml.matchAll(/<vertex[^>]+lat=['"]([^'"]+)['"][^>]+lon=['"]([^'"]+)['"]/g)]
-      .map(m => [parseFloat(m[1]), parseFloat(m[2])])
-      .filter(p => !isNaN(p[0]) && !isNaN(p[1]));
-    const linkPoints = [...xml.matchAll(/<link[^>]+point=['"]([^'"]+)['"]/g)]
-      .map(m => {
-        const p = m[1].split(",");
-        return [parseFloat(p[0]), parseFloat(p[1])];
-      })
-      .filter(p => !isNaN(p[0]) && !isNaN(p[1]));
-    const ellipseTag = xml.match(/<ellipse\b([^>]*)>/i)?.[1] || "";
-    const rectangleTag = xml.match(/<rectangle\b([^>]*)>/i)?.[1] || "";
-    let majorMeters = null;
-    let minorMeters = null;
-    let angleDeg = 0;
-    let rectLengthMeters = null;
-    let rectWidthMeters = null;
-    if (ellipseTag) {
-      majorMeters = parseFloat(attr(ellipseTag, "major"));
-      minorMeters = parseFloat(attr(ellipseTag, "minor"));
-      angleDeg = parseFloat(attr(ellipseTag, "angle") || "0");
-    }
-    if (rectangleTag) {
-      rectLengthMeters = parseFloat(attr(rectangleTag, "length") || attr(rectangleTag, "height") || attr(rectangleTag, "major"));
-      rectWidthMeters = parseFloat(attr(rectangleTag, "width") || attr(rectangleTag, "minor"));
-      angleDeg = parseFloat(attr(rectangleTag, "angle") || attr(rectangleTag, "azimuth") || attr(rectangleTag, "heading") || "0");
-    }
-    const radiusMatch =
-      xml.match(/<circle\b[^>]*\bradius=['"]([^'"]+)['"][^>]*>/i)
-      || xml.match(/<radius\b[^>]*\bvalue=['"]([^'"]+)['"][^>]*>/i);
-    const radiusMeters = radiusMatch ? parseFloat(radiusMatch[1]) : null;
-    const rangeMeters = parseFloat(xml.match(/<range\b[^>]*\bvalue=['"]([^'"]+)['"][^>]*>/i)?.[1] || "");
-    const bearingDeg = parseFloat(xml.match(/<bearing\b[^>]*\bvalue=['"]([^'"]+)['"][^>]*>/i)?.[1] || "");
-    const hasPolygonHint = type === "u-d-f" || type === "u-d-r" || /<polygon\b/i.test(xml) || /<shape\b/i.test(xml);
-    const hasLineStringHint = /<lineString\b/i.test(xml) || /<polyline\b/i.test(xml);
-    let featureType = null, latlng = null, latlngs = null, metadataOnly = false;
-    if (vertexPoints.length >= 3 && hasPolygonHint && !hasLineStringHint) {
-      featureType = "polygon";
-      latlngs = vertexPoints;
-    } else if (vertexPoints.length >= 2 && hasLineStringHint) {
-      featureType = "polyline";
-      latlngs = vertexPoints;
-    } else if (linkPoints.length >= 2) {
-      featureType = hasPolygonHint ? "polygon" : "polyline";
-      latlngs = linkPoints;
-    } else if (!isNaN(lat) && !isNaN(lon) && rectLengthMeters != null && rectWidthMeters != null && !isNaN(rectLengthMeters) && !isNaN(rectWidthMeters) && rectLengthMeters > 0 && rectWidthMeters > 0) {
-      featureType = "rectangle";
-      latlng = [lat, lon];
-      latlngs = rectangleToLatLngs([lat, lon], rectLengthMeters, rectWidthMeters, angleDeg);
-    } else if (!isNaN(lat) && !isNaN(lon) && type === "u-rb-a" && !isNaN(rangeMeters) && rangeMeters > 0 && !isNaN(bearingDeg)) {
-      featureType = "ruler";
-      latlng = [lat, lon];
-    } else if (!isNaN(lat) && !isNaN(lon) && type === "u-d-r") {
-      featureType = "rectangle";
-      latlng = [lat, lon];
-      metadataOnly = true;
-    } else if (!isNaN(lat) && !isNaN(lon) && type === "u-d-f") {
-      featureType = "polygon";
-      latlng = [lat, lon];
-      metadataOnly = true;
-    } else if (!isNaN(lat) && !isNaN(lon) && type === "b-m-r") {
-      featureType = "polyline";
-      latlng = [lat, lon];
-      metadataOnly = true;
-    } else if (!isNaN(lat) && !isNaN(lon) && radiusMeters != null && !isNaN(radiusMeters) && radiusMeters > 0) {
-      featureType = "circle";
-      latlng = [lat, lon];
-    } else if (!isNaN(lat) && !isNaN(lon) && majorMeters != null && minorMeters != null && !isNaN(majorMeters) && !isNaN(minorMeters) && majorMeters > 0 && minorMeters > 0) {
-      featureType = Math.abs(majorMeters - minorMeters) < 0.5 ? "circle" : "ellipse";
-      latlng = [lat, lon];
-    } else if (!isNaN(lat) && !isNaN(lon) && (type.startsWith("a-") || type.startsWith("b-") || type.startsWith("u-") || type.startsWith("s-") || type.startsWith("t-"))) {
-      featureType = "marker";
-      latlng = [lat, lon];
-    }
-    if (!featureType) return null;
-    const argbStr =
-      xml.match(/\bargb=['"](-?\d+)['"]/)?.[1]
-      || xml.match(/strokeColor[^>]*value=['"](-?\d+)['"]/)?.[1]
-      || xml.match(/<color\b[^>]*value=['"](-?\d+)['"][^>]*>/i)?.[1];
-    let color = "#4a9eff";
-    let fillColor = color;
-    if (argbStr) {
-      color = _argbIntToHexColor(parseInt(argbStr), "#4a9eff");
-    }
-    const fillArgbStr = xml.match(/fillColor[^>]*value=['"](-?\d+)['"]/)?.[1];
-    if (fillArgbStr) fillColor = _argbIntToHexColor(parseInt(fillArgbStr), color);
-    const strokeWeight = Number.parseFloat(xml.match(/strokeWeight[^>]*value=['"]([^'"]+)['"]/)?.[1] || "") || 1;
-    const strokeStyle = xml.match(/strokeStyle[^>]*value=['"]([^'"]+)['"]/)?.[1] || "solid";
-    return {
-      uid,
-      rawType: type,
-      cotType: type,
-      type: featureType,
-      latlng,
-      latlngs,
-      label,
-      remarks,
-      color,
-      fillColor,
-      strokeWeight,
-      strokeStyle,
-      iconsetPath,
-      metadataOnly,
-      radiusMeters: featureType === "circle" ? (radiusMeters != null && !isNaN(radiusMeters) ? radiusMeters : Math.max(majorMeters || 0, minorMeters || 0)) : null,
-      majorMeters: featureType === "ellipse" ? majorMeters : null,
-      minorMeters: featureType === "ellipse" ? minorMeters : null,
-      rectLengthMeters: featureType === "rectangle" ? rectLengthMeters : null,
-      rectWidthMeters: featureType === "rectangle" ? rectWidthMeters : null,
-      angleDeg: featureType === "ellipse" || featureType === "rectangle" ? angleDeg : null,
-      rangeMeters: featureType === "ruler" ? rangeMeters : null,
-      bearingDeg: featureType === "ruler" ? bearingDeg : null,
-    };
-  } catch { return null; }
-}
 
 function readJson(req) {
   return new Promise((resolve, reject) => {
@@ -3896,52 +3470,6 @@ function sendJson(res, statusCode, payload) {
   res.end(JSON.stringify(payload));
 }
 
-function sanitizeFilenamePart(value, fallback = "item") {
-  const safe = String(value || "")
-    .trim()
-    .replace(/[<>:"/\\|?*\x00-\x1f]+/g, "_")
-    .replace(/\s+/g, "_")
-    .replace(/_+/g, "_")
-    .replace(/^_+|_+$/g, "")
-    .slice(0, 64);
-  return safe || fallback;
-}
-
-function captureTakEvent({ direction, sender, uid, rawType, featureType, cotXml, metadata = {} }) {
-  const xml = String(cotXml || "").trim();
-  if (!xml) return null;
-  const capturedAt = new Date().toISOString();
-  const stamp = capturedAt.replace(/[:.]/g, "-");
-  const baseName = [
-    stamp,
-    sanitizeFilenamePart(direction, "tak"),
-    sanitizeFilenamePart(sender, "unknown"),
-    sanitizeFilenamePart(uid || featureType || rawType, "event"),
-    Math.random().toString(36).slice(2, 8),
-  ].join("_");
-  const xmlPath = path.join(TAK_CAPTURE_DIR, `${baseName}.xml`);
-  const jsonPath = path.join(TAK_CAPTURE_DIR, `${baseName}.json`);
-  const payload = {
-    capturedAt,
-    direction: direction || null,
-    sender: sender || null,
-    uid: uid || null,
-    rawType: rawType || null,
-    featureType: featureType || null,
-    bytes: Buffer.byteLength(xml, "utf8"),
-    metadata: metadata || {},
-    xmlFile: path.basename(xmlPath),
-  };
-  fs.writeFileSync(xmlPath, xml, "utf8");
-  fs.writeFileSync(jsonPath, JSON.stringify(payload, null, 2), "utf8");
-  return {
-    xmlPath,
-    jsonPath,
-    xmlFile: path.basename(xmlPath),
-    jsonFile: path.basename(jsonPath),
-  };
-}
-
 function buildPythonEnv(includeSelectedPort = true) {
   const env = {
     ...process.env,
@@ -3949,12 +3477,8 @@ function buildPythonEnv(includeSelectedPort = true) {
     PYTHONUTF8: "1",
     PYTHONPATH: process.env.PYTHONPATH ? `${PYDEPS_DIR}${path.delimiter}${process.env.PYTHONPATH}` : PYDEPS_DIR,
   };
-  const selectedPort = getConfiguredMeshtasticPort();
-  if (includeSelectedPort && selectedPort) {
-    env.MESHTASTIC_PORT = selectedPort;
-  } else {
-    delete env.MESHTASTIC_PORT;
-  }
+  delete env.MESHCORE_ADDRESS;
+  delete env.MESHCORE_TRANSPORT;
   return env;
 }
 
@@ -3975,15 +3499,15 @@ function findPythonLauncher() {
 }
 
 function ensureMeshtasticDependency(pythonLauncher) {
-  if (fs.existsSync(path.join(PYDEPS_DIR, "meshtastic"))) {
+  if (fs.existsSync(path.join(PYDEPS_DIR, "meshcore"))) {
     return true;
   }
   fs.mkdirSync(PYDEPS_DIR, { recursive: true });
 
-  console.log("Installing local project Python dependency: meshtastic");
+  console.log("Installing local project Python dependency: meshcore");
   const result = spawnSync(
     pythonLauncher,
-    ["-m", "pip", "install", "--disable-pip-version-check", "--target", PYDEPS_DIR, "meshtastic"],
+    ["-m", "pip", "install", "--disable-pip-version-check", "--target", PYDEPS_DIR, "meshcore"],
     {
       stdio: "inherit",
       shell: false,
@@ -3995,10 +3519,10 @@ function ensureMeshtasticDependency(pythonLauncher) {
 function listMeshtasticPorts() {
   const pythonLauncher = findPythonLauncher();
   if (!pythonLauncher) {
-    return { ok: false, error: "Python not found in PATH", selectedPort: getConfiguredMeshtasticPort() || null, ports: [] };
+    return { ok: false, error: "Python not found in PATH", selectedPort: getConfiguredRadioAddress() || null, ports: [] };
   }
   if (!ensureMeshtasticDependency(pythonLauncher)) {
-    return { ok: false, error: "Failed to install/load meshtastic package", selectedPort: getConfiguredMeshtasticPort() || null, ports: [] };
+    return { ok: false, error: "Failed to install/load meshcore package", selectedPort: getConfiguredRadioAddress() || null, ports: [] };
   }
 
   const result = spawnSync(pythonLauncher, ["bridge.py", "--list-ports"], {
@@ -4013,7 +3537,7 @@ function listMeshtasticPorts() {
     return {
       ok: false,
       error: (result.stderr || result.stdout || `port listing failed with exit code ${result.status}`).trim(),
-      selectedPort: getConfiguredMeshtasticPort() || null,
+      selectedPort: getConfiguredRadioAddress() || null,
       ports: [],
     };
   }
@@ -4026,7 +3550,7 @@ function listMeshtasticPorts() {
 
     return {
       ok: true,
-      selectedPort: getConfiguredMeshtasticPort() || null,
+      selectedPort: getConfiguredRadioAddress() || null,
       detectedPorts: Array.from(detectedPorts),
       fallbackPorts: Array.from(fallbackPorts),
       ports: ports.map((port) => {
@@ -4036,7 +3560,7 @@ function listMeshtasticPorts() {
           device,
           isDetected: detectedPorts.has(device),
           isFallback: fallbackPorts.has(device),
-          isSelected: device !== "" && device === getConfiguredMeshtasticPort(),
+          isSelected: device !== "" && device === getConfiguredRadioAddress(),
         };
       }),
     };
@@ -4044,7 +3568,7 @@ function listMeshtasticPorts() {
     return {
       ok: false,
       error: `port listing parse failed: ${error.message}`,
-      selectedPort: getConfiguredMeshtasticPort() || null,
+      selectedPort: getConfiguredRadioAddress() || null,
       ports: [],
     };
   }
@@ -4806,6 +4330,24 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+const pendingSentWaiters = new Map();
+
+function waitForSentEvent(clientMsgId, timeoutMs = 45000) {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      pendingSentWaiters.delete(clientMsgId);
+      resolve(null);
+    }, timeoutMs);
+    pendingSentWaiters.set(clientMsgId, (payload) => {
+      clearTimeout(timer);
+      pendingSentWaiters.delete(clientMsgId);
+      resolve(payload);
+    });
+  });
+}
+
+const DM_CHUNK_GAP_MS = 600;
+
 function enqueueMeshBatch(
   destinationId,
   packets,
@@ -4817,6 +4359,9 @@ function enqueueMeshBatch(
     ? Boolean(options.isDirectMessage)
     : destinationId !== "^all";
   const channelIndex = normalizeChannelIndex(options.channelIndex, 0);
+  const to = isDirectMessage
+    ? { kind: "node", id: destinationId }
+    : { kind: "broadcast", channel: channelIndex };
   const task = async () => {
     for (let index = 0; index < packets.length; index += 1) {
       const messageText = packets[index];
@@ -4824,14 +4369,9 @@ function enqueueMeshBatch(
       sendBridge({
         type: "send_text",
         payload: {
-          destinationId,
+          to,
           text: messageText,
-          wantAck: true,
-          waitForAck: false,
-          retryOnAckTimeout: MESH_ACK_RETRY_COUNT,
-          ackTimeoutRetryDelayMs: MESH_ACK_RETRY_DELAY_MS,
           clientMsgId,
-          channelIndex,
         },
       });
       const msg = addMessage({
@@ -4839,13 +4379,19 @@ function enqueueMeshBatch(
         sender,
         recipient: destinationId,
         text: messageText,
-        transport: "serial",
+        transport: "meshcore",
         ack: "pending",
         channelIndex,
         isDirectMessage,
       });
       pendingMsgByClientId.set(clientMsgId, msg.id);
-      if (index < packets.length - 1) {
+      if (isDirectMessage) {
+        // Ack-paced: wait for the bridge to resolve delivery before the next chunk.
+        await waitForSentEvent(clientMsgId);
+        if (index < packets.length - 1) {
+          await sleep(DM_CHUNK_GAP_MS);
+        }
+      } else if (index < packets.length - 1) {
         await sleep(batchDelayMs);
       }
     }
@@ -4956,18 +4502,22 @@ async function handleWalletCommand(sender, text) {
 
 async function handleInboundMesh(payload) {
   const repairedText = repairText(payload.text);
-  updateKnownNode(payload.sender, repairedText);
   const isDirectMessage = Boolean(payload.isDirectMessage);
-  const channelIndex = normalizeChannelIndex(payload.channelIndex, 0);
+  const channelIndex = normalizeChannelIndex(payload.channel, 0);
+  if (payload.sender) {
+    updateKnownNode(payload.sender, repairedText);
+  }
 
   addMessage({
     direction: "in",
-    sender: payload.sender,
+    sender: payload.sender || (isDirectMessage ? "unknown" : `channel-${channelIndex}`),
+    senderName: payload.senderName || "",
     recipient: isDirectMessage ? "local-ai" : "^all",
     text: repairedText,
-    transport: payload.transport || "serial",
+    transport: "meshcore",
     isDirectMessage,
     channelIndex,
+    snr: payload.snr ?? null,
   });
 
   if (!isDirectMessage) {
@@ -4977,6 +4527,13 @@ async function handleInboundMesh(payload) {
   if (isApprovedWalletClient(payload.sender)) {
     const handled = await handleWalletCommand(payload.sender, String(repairedText || "").trim());
     if (handled) return;
+  }
+
+  // Never auto-AI-reply to infrastructure nodes: rooms push held/relayed
+  // messages and repeaters speak CLI - replying would create mesh loops.
+  const senderContactType = String(knownNodes[String(payload.sender || "")]?.contactType || "").toLowerCase();
+  if (senderContactType === "room" || senderContactType === "repeater") {
+    return;
   }
 
   if (!isMeshAiReplyEnabled()) {
@@ -5317,14 +4874,19 @@ function startBridge() {
 
   const dependencyReady = ensureMeshtasticDependency(pythonLauncher);
   if (!dependencyReady) {
-    updateMeshtasticStatus({ connected: false, mode: "error", error: "Failed to install/load meshtastic package" });
+    updateMeshtasticStatus({ connected: false, mode: "error", error: "Failed to install/load meshcore package" });
     return;
   }
 
   updateMeshtasticStatus({ connected: false, mode: "starting", error: null });
 
   try {
-    bridgeProcess = spawn(pythonLauncher, ["bridge.py"], {
+    const bridgeArgs = ["bridge.py", "--transport", getConfiguredRadioTransport()];
+    const radioAddress = getConfiguredRadioAddress();
+    if (radioAddress) {
+      bridgeArgs.push("--address", radioAddress);
+    }
+    bridgeProcess = spawn(pythonLauncher, bridgeArgs, {
       cwd: __dirname,
       env: buildPythonEnv(true),
       stdio: ["pipe", "pipe", "pipe"],
@@ -5367,22 +4929,19 @@ function startBridge() {
               newlineIndex = stdoutBuffer.indexOf("\n");
               continue;
             }
-            if (message.payload?.localNodeId) localMeshNodeId = String(message.payload.localNodeId);
+            if (message.payload?.localPubkey) localMeshNodeId = String(message.payload.localPubkey);
             updateMeshtasticStatus(message.payload);
-          } else if (message.type === "nodes") {
-            mergeBridgeNodes(message.payload?.nodes || []);
-          } else if (message.type === "packet") {
-            trackMeshLink(message.payload);
-            mergePacket(message.payload?.sender, message.payload);
+          } else if (message.type === "contacts") {
+            mergeBridgeContacts(message.payload?.contacts || []);
+          } else if (message.type === "advert") {
+            broadcast("advert", message.payload || {});
+          } else if (message.type === "pending_contact") {
+            broadcast("pending_contact", message.payload || {});
           } else if (message.type === "telemetry") {
-            mergeTelemetry(message.payload?.sender, message.payload);
-            addMessage({
-              direction: "system",
-              sender: message.payload?.sender || "telemetry",
-              recipient: message.payload?.recipient || "-",
-              text: `telemetry ${JSON.stringify(message.payload?.telemetry || {})}`,
-              transport: "telemetry",
-            });
+            mergeLppTelemetry(message.payload?.contactId, message.payload);
+            const telemetryWaiter = pendingTelemetryWaiters.get(String(message.payload?.contactId || ""));
+            if (telemetryWaiter) telemetryWaiter(message.payload);
+            broadcast("telemetry", message.payload || {});
           } else if (message.type === "inbound") {
             handleInboundMesh(message.payload).catch((error) => {
               addMessage({
@@ -5393,150 +4952,58 @@ function startBridge() {
                 transport: "system",
               });
             });
-          } else if (message.type === "ack") {
-            const { packetId, errorReason } = message.payload || {};
-            if (packetId != null) {
-              const msgId = pendingMsgByPacketId.get(packetId);
-              if (msgId != null) {
-                const ack = (!errorReason || errorReason === "NONE") ? "delivered" : "failed";
-                updateMessageAck(msgId, ack);
-                pendingMsgByPacketId.delete(packetId);
-              }
-            }
           } else if (message.type === "sent") {
             if (activeBridge !== bridgeProcess) {
               newlineIndex = stdoutBuffer.indexOf("\n");
               continue;
             }
-            updateMeshtasticStatus({ connected: true, mode: "serial", error: null });
+            updateMeshtasticStatus({ connected: true, mode: getConfiguredRadioTransport(), error: null });
             const clientMsgId = message.payload?.clientMsgId;
-            const packetId = message.payload?.packetId;
+            const sentWaiter = clientMsgId ? pendingSentWaiters.get(clientMsgId) : null;
+            if (sentWaiter) sentWaiter(message.payload);
             if (clientMsgId && pendingMsgByClientId.has(clientMsgId)) {
               const msgId = pendingMsgByClientId.get(clientMsgId);
               pendingMsgByClientId.delete(clientMsgId);
-              updateMessageAck(msgId, "sent");
-              if (packetId != null) {
-                pendingMsgByPacketId.set(packetId, msgId);
-              }
+              const delivered = message.payload?.delivered;
+              updateMessageAck(msgId, delivered === true ? "delivered" : delivered === false ? "failed" : "sent");
             }
-          } else if (message.type === "device_meta_saved") {
-            // no-op, nodes snapshot follows
-          } else if (message.type === "position_requested") {
-            broadcast("position_requested", { nodeId: message.payload?.destinationId });
-          } else if (message.type === "tak_sent") {
-            const transport = String(message.payload?.transport || "");
-            broadcast("tak_send_status", {
-              uid: message.payload?.uid,
-              status: transport === "fountain-unconfirmed" ? "unconfirmed" : "sent",
-              transport,
-            });
-          } else if (message.type === "tak") {
-            const cotXml = message.payload?.cotXml || "";
-            if (cotXml) {
-              const feature = parseCotXml(cotXml);
-              const capture = captureTakEvent({
-                direction: "incoming",
-                sender: message.payload?.sender || "unknown",
-                uid: feature?.uid || "",
-                rawType: feature?.rawType || "",
-                featureType: feature?.type || "",
-                cotXml,
-                metadata: feature
-                  ? {
-                      parsed: true,
-                      label: feature.label || "",
-                      color: feature.color || "",
-                      latlng: feature.latlng || null,
-                      latlngs: Array.isArray(feature.latlngs) ? feature.latlngs : null,
-                      radiusMeters: feature.radiusMeters ?? null,
-                      majorMeters: feature.majorMeters ?? null,
-                      minorMeters: feature.minorMeters ?? null,
-                      rectLengthMeters: feature.rectLengthMeters ?? null,
-                      rectWidthMeters: feature.rectWidthMeters ?? null,
-                      angleDeg: feature.angleDeg ?? null,
-                      rangeMeters: feature.rangeMeters ?? null,
-                      bearingDeg: feature.bearingDeg ?? null,
-                      metadataOnly: feature.metadataOnly === true,
-                    }
-                  : {
-                      parsed: false,
-                      preview: cotXml.replace(/\s+/g, " ").slice(0, 320),
-                    },
-              });
-              if (feature) {
-                addMessage({
-                  direction: "system",
-                  sender: "tak",
-                  recipient: "-",
-                  text: `TAK parsed raw=${feature.rawType || "-"} type=${feature.type} uid=${feature.uid || "-"} label=${feature.label || "-"} lat=${Array.isArray(feature.latlng) ? feature.latlng[0] : "-"} lon=${Array.isArray(feature.latlng) ? feature.latlng[1] : "-"} radius=${feature.radiusMeters ?? "-"} major=${feature.majorMeters ?? "-"} minor=${feature.minorMeters ?? "-"} rectL=${feature.rectLengthMeters ?? "-"} rectW=${feature.rectWidthMeters ?? "-"} range=${feature.rangeMeters ?? "-"} bearing=${feature.bearingDeg ?? "-"} metaOnly=${feature.metadataOnly === true ? 1 : 0} capture=${capture?.xmlFile || "-"}`,
-                  transport: "tak",
-                });
-                feature.sender = message.payload?.sender || null;
-                if (feature.type === "delete") latestTakFeatures.delete(feature.uid);
-                else latestTakFeatures.set(feature.uid, feature);
-                broadcast("tak_feature", feature);
-              } else {
-                addMessage({
-                  direction: "system",
-                  sender: "tak",
-                  recipient: "-",
-                  text: `TAK XML received but not rendered from ${message.payload?.sender || "unknown"} capture=${capture?.xmlFile || "-"}: ${cotXml.replace(/\s+/g, " ").slice(0, 320)}`,
-                  transport: "tak",
-                });
-              }
-            }
-          } else if (message.type === "tak_debug") {
-            const payload = message.payload || {};
-            const side = payload.direction || "rx";
-            const portnum = payload.portnum || "UNKNOWN";
-            const sender = payload.sender || "unknown";
-            const channel = payload.channelIndex ?? 0;
-            const hop = payload.hopLimit ?? "-";
-            const transport = payload.transport ? ` ${payload.transport}` : "";
-            const decode = payload.decode ? ` decode=${payload.decode}` : "";
-            const bytes = payload.compressedBytes != null
-              ? ` ${payload.compressedBytes}B`
-              : payload.payloadBytes != null
-                ? ` ${payload.payloadBytes}B`
-                : "";
-            const blocks = payload.blocksReceived != null && payload.sourceBlockCount != null
-              ? ` blocks=${payload.blocksReceived}/${payload.sourceBlockCount}`
-              : "";
-            const totalLen = payload.totalLength != null ? ` len=${payload.totalLength}` : "";
-            const transferType = payload.transferType != null ? ` type=${payload.transferType}` : "";
-            const prefix = payload.payloadPrefix ? ` prefix=${payload.payloadPrefix}` : "";
-            const cotBytes = payload.cotXmlBytes != null ? ` cot=${payload.cotXmlBytes}` : "";
-            const payloadDebug = payload.payloadDebug || {};
-            const inflate =
-              payloadDebug.zlibBytes != null
-                ? ` zlib=${payloadDebug.zlibBytes}`
-                : payloadDebug["raw-deflateBytes"] != null
-                  ? ` rawdeflate=${payloadDebug["raw-deflateBytes"]}`
-                  : "";
-            const inflatePrefix = payloadDebug.zlibPrefix
-              ? ` zprefix=${payloadDebug.zlibPrefix}`
-              : payloadDebug["raw-deflatePrefix"]
-                ? ` rprefix=${payloadDebug["raw-deflatePrefix"]}`
-                : "";
-            const preview = payloadDebug.zlibPreview
-              ? ` preview=${JSON.stringify(payloadDebug.zlibPreview)}`
-              : payloadDebug["raw-deflatePreview"]
-                ? ` preview=${JSON.stringify(payloadDebug["raw-deflatePreview"])}`
-                : "";
-            const extra = payload.note ? ` ${payload.note}` : "";
+          } else if (message.type === "delivered") {
+            broadcast("delivered", message.payload || {});
+          } else if (message.type === "admin_reply") {
+            broadcast("admin_reply", message.payload || {});
             addMessage({
               direction: "system",
-              sender: "tak",
+              sender: message.payload?.senderName || message.payload?.sender || "admin",
               recipient: "-",
-              text: `${side.toUpperCase()} ${portnum} from ${sender} ch${channel} hop ${hop}${transport}${bytes}${decode}${blocks}${totalLen}${transferType}${cotBytes}${prefix}${inflate}${inflatePrefix}${preview}${extra}`,
-              transport: "tak",
+              text: String(message.payload?.text || ""),
+              transport: "admin",
             });
+          } else if (message.type === "admin_session" || message.type === "admin_cmd_sent") {
+            broadcast(message.type, message.payload || {});
+          } else if (message.type === "path") {
+            const pathWaiter = pendingPathWaiters.get(String(message.payload?.contactId || ""));
+            if (pathWaiter) pathWaiter(message.payload);
+            broadcast("path", message.payload || {});
+          } else if (
+            message.type === "path_reset" ||
+            message.type === "advert_sent" ||
+            message.type === "contact_shared" ||
+            message.type === "contact_uri" ||
+            message.type === "channels" ||
+            message.type === "device_stats" ||
+            message.type === "node_status" ||
+            message.type === "time_set" ||
+            message.type === "rebooting" ||
+            message.type === "factory_reset_done" ||
+            message.type === "private_key" ||
+            message.type === "private_key_imported"
+          ) {
+            broadcast(message.type, message.payload || {});
+          } else if (message.type === "device_meta_saved") {
+            broadcast("device_meta_saved", {});
           } else if (message.type === "error") {
             if (activeBridge === bridgeProcess) {
               updateMeshtasticStatus({ error: message.payload.message || "bridge error" });
-            }
-            if (message.payload?.uid) {
-              broadcast("tak_send_status", { uid: message.payload.uid, status: "error", reason: message.payload.message || "" });
             }
             addMessage({
               direction: "system",
@@ -5593,13 +5060,13 @@ function startBridge() {
   }
   nodesRefreshInterval = setInterval(() => {
     try {
-      sendBridge({ type: "refresh_nodes", payload: {} });
+      sendBridge({ type: "refresh_contacts", payload: {} });
     } catch {}
-  }, 15000);
+  }, 60000);
 
   setTimeout(() => {
     try {
-      sendBridge({ type: "refresh_nodes", payload: {} });
+      sendBridge({ type: "refresh_contacts", payload: {} });
     } catch {}
   }, 1500);
 
@@ -5613,9 +5080,9 @@ function startBridge() {
   }, NODES_STATUS_PUSH_INTERVAL_MS);
 }
 
-function restartBridge(port = undefined) {
-  if (port !== undefined) {
-    setConfiguredMeshtasticPort(port);
+function restartBridge(transport = undefined, address = undefined) {
+  if (transport !== undefined || address !== undefined) {
+    setConfiguredRadio(transport ?? getConfiguredRadioTransport(), address ?? getConfiguredRadioAddress());
   }
   stopBridge();
   startBridge();
@@ -5636,9 +5103,6 @@ const server = http.createServer(async (req, res) => {
       });
       res.write(`event: status\ndata: ${JSON.stringify({ meshtastic: getMeshtasticStatusPayload(), llm: llmStatus })}\n\n`);
       res.write(`event: nodes\ndata: ${JSON.stringify(getNodesPayload())}\n\n`);
-      if (latestTakFeatures.size > 0) {
-        res.write(`event: tak_features\ndata: ${JSON.stringify([...latestTakFeatures.values()])}\n\n`);
-      }
       clients.add(res);
       req.on("close", () => clients.delete(res));
       return;
@@ -5665,17 +5129,46 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 200, { ok: true, meshAiReply: appSettings.meshAiReply });
     }
 
-    if (req.method === "GET" && req.url === "/api/meshtastic/ports") {
+    if (req.method === "GET" && (req.url === "/api/mesh/ports" || req.url === "/api/meshtastic/ports")) {
       return sendJson(res, 200, listMeshtasticPorts());
     }
 
-    if (req.method === "POST" && req.url === "/api/meshtastic/connect") {
+    if (req.method === "POST" && (req.url === "/api/mesh/connect" || req.url === "/api/meshtastic/connect")) {
       const body = await readJson(req);
-      const port = Object.prototype.hasOwnProperty.call(body, "port")
-        ? String(body.port || "").trim()
+      const transport = Object.prototype.hasOwnProperty.call(body, "transport")
+        ? (String(body.transport || "serial").trim() === "tcp" ? "tcp" : "serial")
         : undefined;
-      const status = restartBridge(port);
+      const address = Object.prototype.hasOwnProperty.call(body, "address")
+        ? String(body.address || "").trim()
+        : Object.prototype.hasOwnProperty.call(body, "port")
+          ? String(body.port || "").trim()
+          : undefined;
+      const status = restartBridge(transport, address);
       return sendJson(res, 200, { ok: true, meshtastic: status, ports: listMeshtasticPorts() });
+    }
+
+    if (req.method === "POST" && req.url === "/api/mesh/command") {
+      // Generic pass-through for SETUP console + admin terminal bridge commands.
+      const body = await readJson(req);
+      const allowed = new Set([
+        "refresh_contacts", "send_advert", "set_device_meta", "request_telemetry",
+        "request_self_telemetry", "trace_path", "path_discovery", "reset_path",
+        "remove_contact", "share_contact", "export_contact", "import_contact",
+        "add_pending_contact", "get_channels", "set_channel", "get_device_info",
+        "set_time", "reboot", "factory_reset", "export_private_key",
+        "import_private_key", "admin_login", "admin_logout", "admin_cmd",
+        "request_status",
+      ]);
+      const commandType = String(body.type || "");
+      if (!allowed.has(commandType)) {
+        return sendJson(res, 400, { error: `unknown bridge command: ${commandType}` });
+      }
+      try {
+        sendBridge({ type: commandType, payload: body.payload || {} });
+        return sendJson(res, 200, { ok: true });
+      } catch (error) {
+        return sendJson(res, 502, { error: error.message });
+      }
     }
 
     if (req.method === "GET" && req.url === "/api/messages") {
@@ -5722,40 +5215,28 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === "GET" && req.url === "/api/device-meta") {
-      const localNode = localMeshNodeId
-        ? Object.values(knownNodes).find((n) => String(n.meshNum) === localMeshNodeId)
-        : null;
+      // Local device state comes from the bridge's last status event.
       return sendJson(res, 200, {
-        shortName: localNode?.shortName || "",
-        longName: localNode?.longName || "",
-        latitude: localNode?.latitude ?? null,
-        longitude: localNode?.longitude ?? null,
-        modemPreset: localNode?.modemPreset || "LONG_FAST",
-        meshHopLimit: localNode?.meshHopLimit ?? null,
-        region: localNode?.region || "UNSET",
-        txPower: localNode?.txPower ?? null,
-        nodeRole: localNode?.nodeRole || "CLIENT",
-        takChannel: getConfiguredTakChannel(),
-        takHopLimit: getConfiguredTakHopLimit(),
+        name: meshtasticStatus?.name || "",
+        localPubkey: meshtasticStatus?.localPubkey || "",
+        latitude: meshtasticStatus?.latitude ?? null,
+        longitude: meshtasticStatus?.longitude ?? null,
+        radio: meshtasticStatus?.radio || {},
+        advanced: meshtasticStatus?.advanced || {},
+        battery: meshtasticStatus?.battery || {},
+        deviceInfo: meshtasticStatus?.deviceInfo || {},
+        capabilities: meshtasticStatus?.capabilities || {},
         nodeOnlineWindowMinutes: getConfiguredNodeOnlineWindowMinutes(),
       });
     }
 
     if (req.method === "POST" && req.url === "/api/device-meta") {
       const body = await readJson(req);
-      if (Object.prototype.hasOwnProperty.call(body, "takChannel")) {
-        setConfiguredTakChannel(body.takChannel);
-      }
-      if (Object.prototype.hasOwnProperty.call(body, "takHopLimit")) {
-        setConfiguredTakHopLimit(body.takHopLimit);
-      }
       if (Object.prototype.hasOwnProperty.call(body, "nodeOnlineWindowMinutes")) {
         setConfiguredNodeOnlineWindowMinutes(body.nodeOnlineWindowMinutes);
       }
       try {
         const bridgePayload = { ...body };
-        delete bridgePayload.takChannel;
-        delete bridgePayload.takHopLimit;
         delete bridgePayload.nodeOnlineWindowMinutes;
         if (Object.keys(bridgePayload).length > 0) {
           sendBridge({ type: "set_device_meta", payload: bridgePayload });
@@ -5769,26 +5250,10 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === "POST" && req.url === "/api/reset-node-db") {
-      try {
-        sendBridge({ type: "reset_node_db", payload: {} });
-        knownNodes = {};
-        persistNodes();
-        broadcast("nodes", getNodesPayload());
-        return sendJson(res, 200, { ok: true });
-      } catch (e) {
-        return sendJson(res, 503, { error: e.message });
-      }
-    }
-
-    if (req.method === "POST" && req.url.startsWith("/api/node/") && req.url.endsWith("/request-position")) {
-      const nodeId = decodeURIComponent(req.url.slice("/api/node/".length, -"/request-position".length));
-      if (!nodeId) return sendJson(res, 400, { error: "nodeId required" });
-      try {
-        sendBridge({ type: "request_position", payload: { destinationId: nodeId } });
-        return sendJson(res, 200, { ok: true, nodeId });
-      } catch (e) {
-        return sendJson(res, 503, { error: "bridge not connected" });
-      }
+      knownNodes = {};
+      persistNodes();
+      broadcast("nodes", getNodesPayload());
+      return sendJson(res, 200, { ok: true });
     }
 
     if (req.method === "GET" && req.url.startsWith("/api/node-raw")) {
@@ -5803,18 +5268,13 @@ const server = http.createServer(async (req, res) => {
       }
       return sendJson(res, 200, {
         id,
-        meshNum: node.meshNum || null,
         userId: node.userId || node.id,
         shortName: node.shortName || "",
         longName: node.longName || "",
         role: node.role || "generic",
-        hardware: node.hardware || "",
-        meshtasticRole: node.meshtasticRole || "",
-        nodeRole: node.nodeRole || "",
-        modemPreset: node.modemPreset || "",
-        meshHopLimit: node.meshHopLimit ?? null,
-        region: node.region || "",
-        txPower: node.txPower ?? null,
+        contactType: node.contactType || "unknown",
+        outPath: node.outPath || "",
+        isFlood: node.isFlood !== false,
         lastHeard: node.lastHeard || null,
         snr: node.snr ?? null,
         hopsAway: node.hopsAway ?? null,
@@ -5822,17 +5282,11 @@ const server = http.createServer(async (req, res) => {
         voltage: node.voltage ?? null,
         latitude: node.latitude ?? null,
         longitude: node.longitude ?? null,
-        networkSource: node.networkSource || "local",
         environmentMetrics: node.environmentMetrics || null,
-        neighbors: node.neighbors || [],
         online: isNodeOnline(node),
-        live: Array.isArray(node.observedPortnums) && node.observedPortnums.length > 0,
         favorite: isFavoriteNode(node.userId || node.id || id),
-        observedPortnums: node.observedPortnums || [],
-        lastDecoded: node.lastDecoded || null,
+        lastTelemetryAt: node.lastTelemetryAt || null,
         weather: node.weather || null,
-        raw: node.raw || null,
-        lastPacket: node.lastPacket || null,
       });
     }
 
@@ -5900,162 +5354,6 @@ const server = http.createServer(async (req, res) => {
       const reply = await generateReply(peerId, text);
       addMessage({ direction: "out", sender: "local-ai", recipient: peerId, text: reply, transport: "web" });
       return sendJson(res, 200, { reply });
-    }
-
-    if (req.method === "POST" && req.url === "/api/tak/send") {
-      const body = await readJson(req);
-      const uid = body.uid || `tak-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      const feature = {
-        uid,
-        type: body.type,
-        latlng: body.latlng,
-        latlngs: body.latlngs,
-        radiusMeters: body.radiusMeters ?? null,
-        rangeMeters: body.rangeMeters ?? null,
-        bearingDeg: body.bearingDeg ?? null,
-        majorMeters: body.majorMeters ?? null,
-        minorMeters: body.minorMeters ?? null,
-        angleDeg: body.angleDeg ?? null,
-        label: body.label || "",
-        color: body.color || "#4a9eff",
-        fillColor: body.fillColor || body.color || "#4a9eff",
-        strokeWeight: body.strokeWeight ?? 1,
-        strokeStyle: body.strokeStyle || "solid",
-        remarks: body.remarks || "",
-        cotType: body.cotType || "",
-        iconsetPath: body.iconsetPath || "",
-        markerPreset: body.markerPreset || "",
-      };
-      const takBuild = buildTakCotForMesh(feature);
-      if (!takBuild?.cotXml) {
-        return sendJson(res, 400, {
-          error: takBuild?.error || "invalid feature type",
-          compressedBytes: takBuild?.compressedBytes ?? null,
-          originalPoints: takBuild?.originalPoints ?? null,
-          sentPoints: takBuild?.sentPoints ?? null,
-        });
-      }
-      const cotXml = takBuild.cotXml;
-      const compressedBytes = takBuild.compressedBytes ?? compressCotXml(cotXml).length;
-      const capture = captureTakEvent({
-        direction: "outgoing",
-        sender: "local-ui",
-        uid,
-        rawType: feature.type,
-        featureType: feature.type,
-        cotXml,
-        metadata: {
-          label: feature.label || "",
-          color: feature.color || "",
-          fillColor: feature.fillColor || "",
-          strokeWeight: feature.strokeWeight ?? 1,
-          strokeStyle: feature.strokeStyle || "",
-          remarks: feature.remarks || "",
-          cotType: feature.cotType || "",
-          iconsetPath: feature.iconsetPath || "",
-          latlng: feature.latlng || null,
-          latlngs: Array.isArray(feature.latlngs) ? feature.latlngs : null,
-          radiusMeters: feature.radiusMeters ?? null,
-          rangeMeters: feature.rangeMeters ?? null,
-          bearingDeg: feature.bearingDeg ?? null,
-          majorMeters: feature.majorMeters ?? null,
-          minorMeters: feature.minorMeters ?? null,
-          angleDeg: feature.angleDeg ?? null,
-          compressedBytes,
-          channelIndex: getConfiguredTakChannel(),
-          hopLimit: getConfiguredTakHopLimit(),
-        },
-      });
-      let bridgeOnline = true;
-      try {
-        sendBridge({
-          type: "send_tak",
-          payload: {
-            cotXml,
-            destinationId: "^all",
-            uid,
-            channelIndex: getConfiguredTakChannel(),
-            hopLimit: getConfiguredTakHopLimit(),
-          },
-        });
-      } catch (_) { bridgeOnline = false; }
-      if (bridgeOnline) broadcast("tak_send_status", { uid, status: "queued" });
-      if (!bridgeOnline) broadcast("tak_send_status", { uid, status: "error", reason: "bridge_offline" });
-      return sendJson(res, 200, {
-        ok: bridgeOnline,
-        uid,
-        captureFile: capture?.xmlFile || null,
-        error: bridgeOnline ? null : "bridge not connected",
-        simplified: takBuild.simplified === true,
-        downgradedTo: takBuild.downgradedTo || null,
-        compressedBytes,
-        originalPoints: takBuild.originalPoints ?? null,
-        sentPoints: takBuild.sentPoints ?? null,
-      });
-    }
-
-    if (req.method === "POST" && req.url === "/api/tak/delete") {
-      const body = await readJson(req);
-      const uid = String(body.uid || "").trim();
-      if (!uid) {
-        return sendJson(res, 400, { error: "uid is required" });
-      }
-      const feature = {
-        uid,
-        type: body.type || "",
-        rawType: body.rawType || "",
-        cotType: body.cotType || "",
-        latlng: body.latlng || null,
-        radiusMeters: body.radiusMeters ?? null,
-        rangeMeters: body.rangeMeters ?? null,
-        bearingDeg: body.bearingDeg ?? null,
-      };
-      const cotXml = buildTakDeleteCot(feature);
-      if (!cotXml) {
-        return sendJson(res, 400, { error: "unable to build TAK delete event" });
-      }
-      const compressedBytes = compressCotXml(cotXml).length;
-      const capture = captureTakEvent({
-        direction: "outgoing",
-        sender: "local-ui",
-        uid,
-        rawType: feature.rawType || feature.cotType || feature.type || "delete",
-        featureType: "delete",
-        cotXml,
-        metadata: {
-          delete: true,
-          targetType: feature.type || "",
-          latlng: feature.latlng || null,
-          radiusMeters: feature.radiusMeters ?? null,
-          rangeMeters: feature.rangeMeters ?? null,
-          bearingDeg: feature.bearingDeg ?? null,
-          compressedBytes,
-          channelIndex: getConfiguredTakChannel(),
-          hopLimit: getConfiguredTakHopLimit(),
-        },
-      });
-      let bridgeOnline = true;
-      try {
-        sendBridge({
-          type: "send_tak",
-          payload: {
-            cotXml,
-            destinationId: "^all",
-            uid,
-            channelIndex: getConfiguredTakChannel(),
-            hopLimit: getConfiguredTakHopLimit(),
-          },
-        });
-      } catch (_) { bridgeOnline = false; }
-      if (bridgeOnline) broadcast("tak_send_status", { uid, status: "queued" });
-      if (!bridgeOnline) broadcast("tak_send_status", { uid, status: "error", reason: "bridge_offline" });
-      return sendJson(res, 200, {
-        ok: bridgeOnline,
-        uid,
-        captureFile: capture?.xmlFile || null,
-        error: bridgeOnline ? null : "bridge not connected",
-        compressedBytes,
-      });
     }
 
     if (req.method === "POST" && req.url === "/api/mesh/send") {
