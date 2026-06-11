@@ -162,6 +162,14 @@
                   <button id="chatPeerInfoButton" type="button" class="chat-peer-icon-btn" title="Node details" aria-label="Show node details" disabled>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
                   </button>
+                  <button id="chatRoomJoinButton" type="button" class="setup-btn chat-room-join-btn hidden" title="Join room server (login)">JOIN</button>
+                </div>
+                <div id="chatRoomJoinBar" class="chat-room-join-bar hidden">
+                  <span class="chat-room-join-label">ROOM PASSWORD</span>
+                  <input id="chatRoomJoinPassword" type="password" autocomplete="off" placeholder="guest password" />
+                  <button id="chatRoomJoinSubmit" type="button" class="setup-btn setup-btn--primary">JOIN</button>
+                  <button id="chatRoomJoinCancel" type="button" class="setup-btn">CANCEL</button>
+                  <span id="chatRoomJoinStatus" class="chat-room-join-status"></span>
                 </div>
               </div>
             </div>
@@ -324,16 +332,9 @@
           <div class="modal-section node-modal-right-col">
             <div class="modal-label">Network</div>
             <div id="nodeModalStatus" class="modal-kv"></div>
-            <div class="modal-label" style="margin-top:8px">Ports</div>
-            <div id="nodeModalPorts" class="modal-list"></div>
           </div>
           <div id="nodeModalWeather" class="node-modal-weather hidden"></div>
         </div>
-        <div id="nodeModalNeighbors" class="node-modal-neighbors hidden"></div>
-        <details class="node-modal-details">
-          <summary class="node-modal-details-toggle">Last Decoded</summary>
-          <pre id="nodeModalDecoded" class="modal-pre modal-pre--sm"></pre>
-        </details>
         <details class="node-modal-details">
           <summary class="node-modal-details-toggle">Raw Snapshot</summary>
           <pre id="nodeModalRaw" class="modal-pre modal-pre--sm"></pre>
@@ -434,7 +435,7 @@
       <div class="panel-head modal-head">
         <div>
           <h2 id="helpModalTitle">About BLACKBOX NODE</h2>
-          <div id="helpModalSubtitle" class="chat-subtitle">Emergency-first Meshtastic AI companion</div>
+          <div id="helpModalSubtitle" class="chat-subtitle">Emergency-first MeshCore AI companion</div>
         </div>
         <button id="helpModalClose" type="button" class="modal-close" aria-label="Close"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="1" y1="1" x2="11" y2="11"/><line x1="11" y1="1" x2="1" y2="11"/></svg></button>
       </div>
@@ -443,7 +444,7 @@
         <div class="modal-section">
           <div class="modal-label">What It Is</div>
           <div class="help-copy">
-            <p>BLACKBOX NODE is a local-first assistant connected to Meshtastic radios for degraded, remote, or emergency conditions.</p>
+            <p>BLACKBOX NODE is a local-first assistant connected to MeshCore radios for degraded, remote, or emergency conditions.</p>
             <p>It is built to stay useful when normal internet-first tools are unavailable, slow, or irrelevant.</p>
           </div>
         </div>
@@ -451,7 +452,7 @@
           <div class="modal-label">How To Use It</div>
           <div class="help-copy">
             <p>Use <strong>Local Chat</strong> to test the offline model directly on this machine.</p>
-            <p>Use the radio side to answer Meshtastic users with compact, packet-safe replies that fit the channel.</p>
+            <p>Use the radio side to answer MeshCore users with compact, packet-safe replies that fit the channel.</p>
             <p>Use <strong>Manage</strong> near the model selector to install, switch, or remove compatible GGUF models.</p>
           </div>
         </div>
@@ -460,7 +461,7 @@
           <div class="help-copy">
             <p>This system is designed for resilience over polish.</p>
             <p>It should remain readable, local, repairable, and useful under stress.</p>
-            <p>The goal is simple: give people a small offline AI that can still help over Meshtastic when infrastructure is weak, damaged, or gone.</p>
+            <p>The goal is simple: give people a small offline AI that can still help over MeshCore when infrastructure is weak, damaged, or gone.</p>
           </div>
         </div>
         </div>
@@ -549,7 +550,7 @@
             <strong id="walletEngineStatus">Not configured</strong>
           </div>
           <div class="wallet-status-badge">
-            <span>Meshtastic</span>
+            <span>MeshCore</span>
             <strong id="walletMeshtasticStatus">Disconnected</strong>
           </div>
         </div>
@@ -930,7 +931,7 @@
 
             <div id="receiveCashuPanel" class="hidden">
               <div class="wallet-section-divider">Receive off-grid</div>
-              <div class="wallet-hint" style="margin-bottom:8px">Paste a <strong>cashuA…</strong> token received via Meshtastic DM or any other channel.</div>
+              <div class="wallet-hint" style="margin-bottom:8px">Paste a <strong>cashuA…</strong> token received via MeshCore DM or any other channel.</div>
               <form id="cashuReceiveForm" class="wallet-form-grid">
                 <label class="wallet-field wallet-field-wide" for="cashuReceiveInput">
                   <span>Token</span>
@@ -1063,7 +1064,7 @@
                 <label class="wallet-field" for="walletDefaultTransportSelect">
                   <span>Transport</span>
                   <select id="walletDefaultTransportSelect">
-                    <option value="Meshtastic DM">Meshtastic DM (off-grid)</option>
+                    <option value="MeshCore DM">MeshCore DM (off-grid)</option>
                   </select>
                 </label>
               </div>
@@ -1174,178 +1175,52 @@
       </div>
     </section>
   </div>
-  <div id="deviceMetaModal" class="modal-shell hidden" aria-hidden="true">
-    <div class="modal-backdrop" data-close-device-meta></div>
-    <section class="modal-panel panel device-meta-panel" role="dialog" aria-modal="true" aria-labelledby="deviceMetaTitle">
-      <div class="panel-head modal-head device-meta-head">
-        <div>
-          <h2 id="deviceMetaTitle">Device Settings</h2>
-          <div class="chat-subtitle">Radio identity, LoRa profile, TAK routing, and serial connection</div>
-        </div>
-        <button id="deviceMetaClose" type="button" class="modal-close" aria-label="Close"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="1" y1="1" x2="11" y2="11"/><line x1="11" y1="1" x2="1" y2="11"/></svg></button>
+  <div id="setupScreen" class="setup-screen hidden" aria-hidden="true">
+    <div class="setup-frame panel">
+      <div class="setup-header">
+        <span class="setup-title">== SETUP ==</span>
+        <span id="setupLinkState" class="setup-link-state">LINK: OFFLINE</span>
+        <button id="setupCloseButton" type="button" class="modal-close setup-close" aria-label="Close setup"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="1" y1="1" x2="11" y2="11"/><line x1="11" y1="1" x2="1" y2="11"/></svg></button>
       </div>
-      <div class="device-meta-form">
-
-        <div class="device-meta-section">
-          <div class="device-meta-section-label">Identity</div>
-          <div class="device-meta-row device-meta-row-4">
-            <label class="device-meta-field" for="deviceMetaShortName">
-              <span class="device-meta-label">Short Name</span>
-              <input id="deviceMetaShortName" type="text" maxlength="4" autocomplete="off" spellcheck="false">
-            </label>
-            <label class="device-meta-field device-meta-field-wide" for="deviceMetaLongName">
-              <span class="device-meta-label">Long Name</span>
-              <input id="deviceMetaLongName" type="text" maxlength="40" autocomplete="off" spellcheck="false">
-            </label>
-            <label class="device-meta-field" for="deviceMetaLat">
-              <span class="device-meta-label">Latitude</span>
-              <input id="deviceMetaLat" type="number" step="any" placeholder="55.7558">
-            </label>
-            <label class="device-meta-field" for="deviceMetaLon">
-              <span class="device-meta-label">Longitude</span>
-              <input id="deviceMetaLon" type="number" step="any" placeholder="37.6173">
-            </label>
-          </div>
-        </div>
-
-        <div class="device-meta-section">
-          <div class="device-meta-section-label">LoRa Radio</div>
-          <div class="device-meta-row device-meta-row-4">
-            <label class="device-meta-field device-meta-field-wide" for="deviceMetaModemPreset">
-              <span class="device-meta-label">Modem Preset</span>
-              <select id="deviceMetaModemPreset">
-                <option value="LONG_FAST">LongFast</option>
-                <option value="LONG_SLOW">LongSlow</option>
-                <option value="VERY_LONG_SLOW">VeryLongSlow</option>
-                <option value="MEDIUM_FAST">MedFast</option>
-                <option value="MEDIUM_SLOW">MedSlow</option>
-                <option value="SHORT_FAST">ShortFast</option>
-                <option value="SHORT_SLOW">ShortSlow</option>
-                <option value="LONG_MODERATE">LongModerate</option>
-                <option value="SHORT_TURBO">ShortTurbo</option>
-                <option value="LONG_TURBO">LongTurbo</option>
-              </select>
-            </label>
-            <label class="device-meta-field device-meta-field-wide" for="deviceMetaRegion">
-              <span class="device-meta-label">Region</span>
-              <select id="deviceMetaRegion">
-                <option value="UNSET">Unset</option>
-                <option value="US">US</option>
-                <option value="EU_433">EU 433</option>
-                <option value="EU_868">EU 868</option>
-                <option value="CN">CN</option>
-                <option value="JP">JP</option>
-                <option value="ANZ">ANZ</option>
-                <option value="KR">KR</option>
-                <option value="TW">TW</option>
-                <option value="RU">RU</option>
-                <option value="IN">IN</option>
-                <option value="NZ_865">NZ 865</option>
-                <option value="TH">TH</option>
-                <option value="UA_433">UA 433</option>
-                <option value="UA_868">UA 868</option>
-                <option value="MY_433">MY 433</option>
-                <option value="MY_919">MY 919</option>
-                <option value="SG_923">SG 923</option>
-                <option value="LORA_24">LoRa 2.4GHz</option>
-              </select>
-            </label>
-            <label class="device-meta-field" for="deviceMetaMeshHopLimit">
-              <span class="device-meta-label">Hop Limit</span>
-              <input id="deviceMetaMeshHopLimit" type="number" min="0" max="7" step="1" placeholder="3">
-            </label>
-            <label class="device-meta-field" for="deviceMetaTxPower">
-              <span class="device-meta-label">TX Power</span>
-              <input id="deviceMetaTxPower" type="number" min="0" max="30" step="1" placeholder="0=max">
-            </label>
-          </div>
-          <div class="device-meta-role-row">
-            <label class="device-meta-field" for="deviceMetaNodeRole">
-              <span class="device-meta-label">Node Role</span>
-              <select id="deviceMetaNodeRole">
-                <option value="CLIENT">Client</option>
-                <option value="CLIENT_MUTE">Client Mute</option>
-                <option value="ROUTER">Router</option>
-                <option value="ROUTER_CLIENT">Router Client</option>
-                <option value="REPEATER">Repeater</option>
-                <option value="TRACKER">Tracker</option>
-                <option value="SENSOR">Sensor</option>
-                <option value="TAK">TAK</option>
-                <option value="CLIENT_HIDDEN">Client Hidden</option>
-                <option value="LOST_AND_FOUND">Lost &amp; Found</option>
-                <option value="TAK_TRACKER">TAK Tracker</option>
-              </select>
-            </label>
-            <button id="deviceResetNodeDb" type="button" class="btn-danger">Reset Node DB</button>
-          </div>
-        </div>
-
-        <div class="device-meta-section device-meta-section-inline">
-          <div class="device-meta-inline-group device-meta-tak-group">
-            <div class="device-meta-section-label">TAK</div>
-            <div class="device-meta-tak-row">
-              <label class="device-meta-field" for="deviceMetaTakChannel">
-                <span class="device-meta-label">Channel</span>
-                <input id="deviceMetaTakChannel" type="number" min="0" max="7" step="1" placeholder="0">
-              </label>
-              <label class="device-meta-field" for="deviceMetaTakHopLimit">
-                <span class="device-meta-label">Hop Limit</span>
-                <input id="deviceMetaTakHopLimit" type="number" min="0" max="7" step="1" placeholder="3">
-              </label>
-            </div>
-          </div>
-          <div class="device-meta-inline-group">
-            <div class="device-meta-section-label">Connection</div>
-            <div class="device-meta-port-row">
-              <label class="device-meta-field" for="deviceMetaPortSelect">
-                <span class="device-meta-label">Serial Port</span>
-                <select id="deviceMetaPortSelect">
-                  <option value="">Auto-detect</option>
-                </select>
-              </label>
-              <button id="deviceMetaPortRefresh" type="button" class="device-meta-port-btn" title="Refresh ports" aria-label="Refresh ports">
-                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5A4.5 4.5 0 1 0 11 7"/><path d="M10 1v2.5H7.5"/></svg>
-              </button>
-              <button id="deviceMetaPortConnect" type="button" class="device-meta-port-btn" title="Reconnect">
-                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="1" y1="6" x2="10" y2="6"/><polyline points="7,3 10,6 7,9"/></svg>
-              </button>
-            </div>
-            <div id="deviceMetaPortStatus" class="device-status-text" role="status" aria-live="polite"></div>
-          </div>
-        </div>
-
-        <div class="device-meta-actions">
-          <div id="deviceMetaStatus" class="device-status-text" role="status" aria-live="polite"></div>
-          <button id="deviceMetaLocate" type="button">Locate Device</button>
-          <button id="deviceMetaSave" type="button">Save to device</button>
-        </div>
+      <div class="setup-body">
+        <div id="setupMenu" class="setup-menu" role="menu"></div>
+        <div id="setupSub" class="setup-sub hidden"></div>
       </div>
-    </section>
+      <div class="setup-footer">[ENTER] SELECT&nbsp;&nbsp;&nbsp;[ESC] BACK</div>
+    </div>
   </div>
-  <div id="deviceConnectModal" class="modal-shell hidden" aria-hidden="true">
-    <div class="modal-backdrop" data-close-device-connect></div>
-    <section class="modal-panel panel device-connect-panel" role="dialog" aria-modal="true" aria-labelledby="deviceConnectTitle">
-      <div class="panel-head modal-head">
-        <div>
-          <h2 id="deviceConnectTitle">Device Connection</h2>
-          <div class="chat-subtitle">Choose a serial port and reconnect Meshtastic</div>
-        </div>
-        <button id="deviceConnectClose" type="button" class="modal-close" aria-label="Close"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="1" y1="1" x2="11" y2="11"/><line x1="11" y1="1" x2="1" y2="11"/></svg></button>
-      </div>
-      <div class="device-connect-form">
-        <label class="device-meta-field" for="deviceConnectPortSelect">
-          <span class="device-meta-label">Serial Port</span>
-          <select id="deviceConnectPortSelect">
-            <option value="">Auto-detect (recommended)</option>
-          </select>
-        </label>
-        <div class="device-connect-actions">
-          <button id="deviceConnectRefresh" type="button">Refresh ports</button>
-          <button id="deviceConnectApply" type="button">Connect</button>
-        </div>
-        <div id="deviceConnectStatus" class="device-status-text" role="status" aria-live="polite"></div>
-      </div>
-    </section>
+  <div id="tracePanel" class="trace-panel panel hidden" aria-hidden="true">
+    <div class="trace-panel-head">
+      <span class="trace-panel-title">TRACE PATH</span>
+      <button id="tracePanelClose" type="button" class="modal-close" aria-label="Close trace"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="1" y1="1" x2="11" y2="11"/><line x1="11" y1="1" x2="1" y2="11"/></svg></button>
+    </div>
+    <div id="tracePanelBody" class="trace-panel-body"></div>
+  </div>
+  <div id="adminConsole" class="admin-console panel hidden" aria-hidden="true">
+    <div class="admin-console-head">
+      <span class="admin-console-title">== REMOTE ADMIN ==</span>
+      <span id="adminConsoleTarget" class="admin-console-target"></span>
+      <button id="adminConsoleClose" type="button" class="modal-close" aria-label="Close admin console"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="1" y1="1" x2="11" y2="11"/><line x1="11" y1="1" x2="1" y2="11"/></svg></button>
+    </div>
+    <div id="adminLoginView" class="admin-login hidden">
+      <div class="admin-login-text">ENTER PASSWORD FOR <span id="adminLoginWho"></span></div>
+      <div class="admin-login-hint">GUEST OR ADMIN PASSWORD - SENT OVER THE MESH</div>
+      <form id="adminLoginForm" class="admin-login-row">
+        <input id="adminLoginPassword" type="password" autocomplete="off" placeholder="password" />
+        <button id="adminLoginSubmit" type="submit" class="setup-btn setup-btn--primary">LOGIN</button>
+      </form>
+      <div id="adminLoginStatus" class="admin-login-status"></div>
+    </div>
+    <div id="adminTermView" class="admin-term hidden">
+      <div id="adminTermChips" class="admin-term-chips"></div>
+      <div id="adminTermScroll" class="admin-term-scroll"></div>
+      <div id="adminTermConfirmSlot"></div>
+      <form id="adminTermForm" class="admin-term-inputrow">
+        <span class="admin-term-prompt">&gt;</span>
+        <input id="adminTermInput" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="cli command" />
+        <button id="adminLogoutButton" type="button" class="setup-btn setup-btn--danger">LOGOUT</button>
+      </form>
+    </div>
   </div>
   <div id="walletTestModeWarningModal" class="modal-shell hidden" aria-hidden="true">
     <div class="modal-backdrop" data-close-wallet-testmode-warning></div>
@@ -1383,7 +1258,7 @@
           <input id="chatChannelModalName" type="text" maxlength="32" autocomplete="off" spellcheck="false" placeholder="Team Ops">
         </label>
         <label class="device-meta-field" for="chatChannelModalIndex">
-          <span class="device-meta-label">Meshtastic Channel Index <span class="device-meta-hint">(0-7)</span></span>
+          <span class="device-meta-label">Channel Index <span class="device-meta-hint">(0-7)</span></span>
           <input id="chatChannelModalIndex" type="number" min="0" max="7" step="1" placeholder="0">
         </label>
         <div id="chatChannelModalStatus" class="device-status-text" role="status" aria-live="polite"></div>
@@ -1392,6 +1267,7 @@
     </section>
   </div>
 
+  <script src="/static/qr.js" defer></script>
   <script src="/static/app.js" defer></script>
 </body>
 </html>

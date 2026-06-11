@@ -1816,6 +1816,9 @@ body.is-resizing-panels {
 }
 
 .nodes-map-network-layer-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   margin-bottom: 0;
   padding: 4px 8px;
   background: transparent;
@@ -1826,6 +1829,43 @@ body.is-resizing-panels {
 
 .nodes-map-network-layer-row:hover {
   background: transparent;
+}
+
+.nodes-map-layer-color {
+  width: 10px;
+  height: 10px;
+  flex-shrink: 0;
+}
+
+.nodes-map-layer-name {
+  flex: 1;
+  font-size: 11.5px;
+  color: #c0d0e0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nodes-map-layer-name--hidden {
+  opacity: 0.38;
+  text-decoration: line-through;
+}
+
+.nodes-map-layer-vis {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  opacity: 0.5;
+  color: #c0d0e0;
+  display: flex;
+  align-items: center;
+  transition: opacity 0.12s;
+  flex-shrink: 0;
+}
+
+.nodes-map-layer-vis:hover {
+  opacity: 1;
 }
 
 .nodes-map-network-layer-row + .nodes-map-network-layer-row {
@@ -4410,7 +4450,7 @@ textarea,
   grid-template-columns: minmax(210px, 1.9fr) minmax(126px, 1fr) minmax(86px, 0.7fr) minmax(92px, 0.72fr);
 }
 
-/* TAK + Connection side by side */
+/* Inline device-meta sections side by side */
 .device-meta-section-inline {
   display: grid;
   grid-template-columns: minmax(244px, 0.72fr) minmax(300px, 1fr);
@@ -4530,18 +4570,6 @@ textarea,
   width: 100%;
   margin-top: 0;
   white-space: nowrap;
-}
-
-/* TAK inputs — compact fixed-width columns */
-.device-meta-tak-row {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  align-items: end;
-}
-
-.device-meta-tak-row input {
-  width: 100%;
 }
 
 .device-meta-actions {
@@ -4710,578 +4738,901 @@ textarea,
   border-bottom-color: var(--edge-light);
 }
 
-/* ── TAK / ATAK Panel ─────────────────────────────────────────────────────── */
-.tak-panel {
-  background: rgba(13, 16, 22, 0.96);
-  border: 1px solid rgba(74, 158, 255, 0.22);
-  border-radius: 0;
-  color: #c8d8e8;
-  font-family: Consolas, "Cascadia Mono", "Courier New", monospace;
-  font-size: 12px;
-  min-width: 210px;
-  max-width: 240px;
-  max-height: 72vh;
-  overflow-y: auto;
-  overflow-x: hidden;
-  pointer-events: auto;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(74,158,255,0.25) transparent;
-}
-.tak-panel.hidden {
-  display: none;
-}
-.tak-panel-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 7px 10px 6px;
-  border-bottom: 1px solid rgba(74, 158, 255, 0.15);
-}
-.tak-panel-title {
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  color: #4a9eff;
-}
-.tak-panel-close {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 18px;
-  padding: 0;
-  background: none;
-  border: none;
-  color: #8ea9c4;
-  cursor: pointer;
-  opacity: 0.7;
-  transition: opacity 0.12s, color 0.12s;
-}
-.tak-panel-close:hover {
-  opacity: 1;
-  color: #d3e4f5;
-}
-@keyframes tak-spin-text {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
-}
-.tak-section {
-  padding: 7px 10px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-}
-.tak-section:last-child {
-  border-bottom: none;
-}
-.tak-section-title {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 9.5px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.8px;
-  color: #6a8aa8;
-  margin-bottom: 6px;
-}
-.tak-layer-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 3px 4px;
-  border-radius: 0;
-  cursor: pointer;
-  transition: background 0.12s;
-  margin-bottom: 2px;
-}
-.tak-layer-row:hover {
-  background: rgba(74, 158, 255, 0.08);
-}
-.tak-layer-row.tak-layer-active {
-  background: rgba(74, 158, 255, 0.14);
-  outline: 1px solid rgba(74, 158, 255, 0.3);
-}
-.tak-layer-color {
-  width: 10px;
-  height: 10px;
-  border-radius: 0;
-  flex-shrink: 0;
-}
-.tak-layer-name {
-  flex: 1;
-  font-size: 11.5px;
-  color: #c0d0e0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.tak-layer-hidden {
-  opacity: 0.38;
-  text-decoration: line-through;
-}
-.tak-layer-vis {
-  background: none;
-  border: none;
-  padding: 0;
-  cursor: pointer;
-  opacity: 0.5;
-  color: #c0d0e0;
-  display: flex;
-  align-items: center;
-  transition: opacity 0.12s;
-  flex-shrink: 0;
-}
-.tak-layer-vis:hover {
-  opacity: 1;
-}
-.tak-layer-status,
-.tak-layer-resend {
-  background: none;
-  border: none;
-  padding: 0;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  transition: opacity 0.12s, color 0.12s, transform 0.12s;
-}
-.tak-layer-status {
-  opacity: 0.72;
-  color: #6f859b;
-}
-.tak-layer-status--sending {
-  color: #9eb8cf;
-  animation: tak-spin-text 1.2s linear infinite;
-}
-.tak-layer-status--sent {
-  color: #4caf50;
-}
-.tak-layer-status--unconfirmed {
-  color: #ffb347;
-}
-.tak-layer-status--error {
-  color: #ff6060;
-}
-.tak-layer-status:hover {
-  opacity: 1;
-}
-.tak-layer-resend {
-  opacity: 0.45;
-  color: #8fb6ff;
-}
-.tak-layer-resend:hover {
-  opacity: 1;
-  transform: rotate(-20deg);
-}
-.tak-layer-delete {
-  background: none;
-  border: none;
-  padding: 0;
-  cursor: pointer;
-  opacity: 0.3;
-  color: #ff6060;
-  font-size: 15px;
-  line-height: 1;
-  flex-shrink: 0;
-  transition: opacity 0.12s;
-}
-.tak-layer-delete:hover {
-  opacity: 1;
-}
-.tak-item-list {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin: 0 0 4px 14px;
-}
-.tak-item-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 20px;
-  padding: 2px 4px;
-  background: rgba(255, 255, 255, 0.03);
-  border-left: 1px solid rgba(74, 158, 255, 0.18);
-}
-.tak-item-type {
-  flex-shrink: 0;
-  min-width: 44px;
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.4px;
-  text-transform: uppercase;
-  color: #6f93b7;
-}
-.tak-item-name {
-  flex: 1;
-  min-width: 0;
-  font-size: 11px;
-  color: #c0d0e0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.tak-item-delete {
-  background: none;
-  border: none;
-  padding: 0;
-  color: #ff6060;
-  opacity: 0.42;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  transition: opacity 0.12s;
-}
-.tak-item-delete:hover {
-  opacity: 1;
-}
-.tak-mini-btn {
-  background: rgba(74, 158, 255, 0.12);
-  border: 1px solid rgba(74, 158, 255, 0.28);
-  color: #4a9eff;
-  border-radius: 0;
-  padding: 1px 7px;
-  font-size: 11px;
-  cursor: pointer;
-  transition: background 0.12s;
-  font-family: inherit;
-  line-height: 1.5;
-}
-.tak-mini-btn:hover {
-  background: rgba(74, 158, 255, 0.22);
-}
-.tak-draw-toolbar {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.tak-draw-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: #b0c4d8;
-  border-radius: 0;
-  padding: 5px 9px;
-  font-size: 11px;
-  cursor: pointer;
-  transition: background 0.12s, border-color 0.12s, color 0.12s;
-  width: 100%;
-  text-align: left;
-  font-family: inherit;
-}
-.tak-draw-btn:hover {
-  background: rgba(74, 158, 255, 0.1);
-  border-color: rgba(74, 158, 255, 0.28);
-  color: #c8dff0;
-}
-.tak-draw-btn.tak-draw-btn--active {
-  background: rgba(74, 158, 255, 0.18);
-  border-color: rgba(74, 158, 255, 0.5);
-  color: #4a9eff;
-}
-.tak-draw-hint {
-  font-size: 10px;
-  color: #6a8aa8;
-  padding: 4px 2px 0;
-  line-height: 1.5;
-}
-.tak-draw-hint.hidden {
-  display: none;
-}
-.tak-draw-actions {
-  display: flex;
-  gap: 5px;
-  margin-top: 5px;
-}
-.tak-draw-finish {
-  flex: 1;
-  background: rgba(74, 158, 255, 0.12);
-  border: 1px solid rgba(74, 158, 255, 0.4);
-  color: #4a9eff;
-  border-radius: 5px;
-  padding: 4px 8px;
-  font-size: 11px;
-  cursor: pointer;
-  transition: background 0.12s;
-  font-family: inherit;
-}
-.tak-draw-finish:hover:not(:disabled) {
-  background: rgba(74, 158, 255, 0.22);
-}
-.tak-draw-finish:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-}
-.tak-draw-finish.hidden {
-  display: none;
-}
-.tak-draw-cancel {
-  flex: 1;
-  background: rgba(255, 80, 80, 0.08);
-  border: 1px solid rgba(255, 80, 80, 0.28);
-  color: #ff7070;
-  border-radius: 5px;
-  padding: 4px 8px;
-  font-size: 11px;
-  cursor: pointer;
-  transition: background 0.12s;
-  font-family: inherit;
-}
-.tak-draw-cancel:hover {
-  background: rgba(255, 80, 80, 0.18);
-}
-.tak-draw-cancel.hidden {
-  display: none;
-}
-.tak-empty-hint {
-  font-size: 11px;
-  color: #4a6070;
-  padding: 2px 0;
-  font-style: italic;
-}
-/* TAK Inline Dialog */
-.tak-panel {
-  position: relative;
-}
-.tak-inline-dialog {
-  position: absolute;
+/* ============================================================
+   SETUP screen (MeshCore settings console, game title-screen)
+   ============================================================ */
+.setup-screen {
+  position: fixed;
   inset: 0;
-  background: rgba(10, 13, 20, 0.96);
-  border-radius: 0;
+  z-index: 220;
   display: flex;
-  flex-direction: column;
+  align-items: center;
   justify-content: center;
-  gap: 10px;
-  padding: 18px 14px;
-  z-index: 20;
-}
-.tak-map-editor {
-  position: absolute;
-  min-width: 220px;
-  max-width: 246px;
-  background: rgba(10, 13, 20, 0.97);
-  border: 1px solid rgba(74, 158, 255, 0.28);
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.38);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 10px;
-  z-index: 1500;
-}
-.tak-map-editor.hidden {
-  display: none;
-}
-.tak-map-editor--compact .tak-form-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
-}
-.tak-map-editor--compact .tak-form-field--wide {
-  grid-column: 1 / -1;
-}
-.tak-map-editor--compact .tak-dialog-label {
-  font-size: 10px;
-}
-.tak-map-editor--compact .tak-dialog-input,
-.tak-map-editor--compact .tak-dialog-select,
-.tak-map-editor--compact .tak-dialog-textarea {
-  font-size: 11px;
-  padding: 5px 7px;
-}
-.tak-map-editor--compact .tak-dialog-textarea {
-  min-height: 54px;
-}
-.tak-map-editor--compact .tak-dialog-actions {
-  gap: 4px;
-}
-.tak-map-editor--compact .tak-dialog-ok,
-.tak-map-editor--compact .tak-dialog-cancel-btn {
-  padding: 4px 8px;
-  font-size: 11px;
-}
-.tak-inline-dialog.hidden {
-  display: none;
-}
-.tak-dialog-label {
-  font-size: 11px;
-  color: #a0b8cc;
-  font-weight: 600;
-}
-.tak-dialog-input {
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(74, 158, 255, 0.35);
-  border-radius: 5px;
-  color: #e0eaf4;
-  font-family: Consolas, "Cascadia Mono", "Courier New", monospace;
-  font-size: 12px;
-  padding: 6px 9px;
-  outline: none;
-  width: 100%;
-  box-sizing: border-box;
-  transition: border-color 0.15s;
-}
-.tak-dialog-input:focus {
-  border-color: rgba(74, 158, 255, 0.7);
-}
-.tak-dialog-select,
-.tak-dialog-textarea {
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(74, 158, 255, 0.35);
-  border-radius: 5px;
-  color: #e0eaf4;
-  font-family: Consolas, "Cascadia Mono", "Courier New", monospace;
-  font-size: 12px;
-  padding: 6px 9px;
-  outline: none;
-  width: 100%;
-  box-sizing: border-box;
-}
-.tak-dialog-select:focus,
-.tak-dialog-textarea:focus {
-  border-color: rgba(74, 158, 255, 0.7);
-}
-.tak-dialog-textarea {
-  resize: vertical;
-  min-height: 68px;
-}
-.tak-dialog-color {
-  min-height: 34px;
-  padding: 3px;
-}
-.tak-form-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-.tak-feature-preview {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 8px 10px;
-  border: 1px solid rgba(74, 158, 255, 0.22);
-  background: rgba(255, 255, 255, 0.03);
-}
-.tak-map-editor--compact .tak-feature-preview {
-  padding: 6px 8px;
-}
-.tak-feature-preview-title {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.7px;
-  color: #6a8aa8;
-}
-.tak-form-field {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.tak-form-field span {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.7px;
-  color: #6a8aa8;
-}
-.tak-form-field--wide {
-  grid-column: 1 / -1;
-}
-.tak-dialog-actions {
-  display: flex;
-  gap: 6px;
-}
-.tak-dialog-ok {
-  flex: 1;
-  background: rgba(74, 158, 255, 0.18);
-  border: 1px solid rgba(74, 158, 255, 0.45);
-  color: #4a9eff;
-  border-radius: 5px;
-  padding: 5px 10px;
-  font-size: 11px;
-  cursor: pointer;
-  font-family: inherit;
-  transition: background 0.12s;
-}
-.tak-dialog-ok:hover {
-  background: rgba(74, 158, 255, 0.3);
-}
-.tak-dialog-ok--danger {
-  background: rgba(255, 80, 80, 0.12);
-  border-color: rgba(255, 80, 80, 0.4);
-  color: #ff6060;
-}
-.tak-dialog-ok--danger:hover {
-  background: rgba(255, 80, 80, 0.25);
-}
-.tak-dialog-cancel-btn {
-  flex: 1;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  color: #7a9ab8;
-  border-radius: 5px;
-  padding: 5px 10px;
-  font-size: 11px;
-  cursor: pointer;
-  font-family: inherit;
-  transition: background 0.12s;
-}
-.tak-dialog-cancel-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: #a0b8cc;
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+    rgba(5, 6, 7, 0.92);
+  background-size: 18px 18px, 18px 18px, auto;
 }
 
-/* Crosshair cursor while drawing */
-.nodes-map-container.tak-drawing,
-.nodes-map-container.tak-drawing .leaflet-container {
-  cursor: crosshair !important;
+.setup-screen.hidden {
+  display: none;
 }
-/* TAK waypoint markers */
-.tak-marker-icon {
-  position: relative;
-  width: 16px;
-  height: 16px;
-  display: block;
-  overflow: visible;
+
+.setup-frame {
+  width: min(860px, calc(100% - 24px));
+  height: min(640px, calc(100% - 24px));
+  display: flex;
+  flex-direction: column;
+  padding: 0;
 }
-.tak-marker-symbol {
-  width: 16px;
-  height: 16px;
+
+.setup-header {
   display: flex;
   align-items: center;
-  justify-content: center;
-  filter: drop-shadow(0 0 5px rgba(0,0,0,0.6));
+  gap: 12px;
+  padding: 10px 12px;
+  background: linear-gradient(180deg, #4a5563 0%, #36404b 100%);
+  border-bottom: 2px solid var(--edge-dark);
 }
-.tak-marker-symbol svg {
-  width: 16px;
-  height: 16px;
-  display: block;
+
+.setup-title {
+  font-family: "Press Start Local", monospace;
+  font-size: 14px;
+  color: #ffffff;
+  letter-spacing: 0.04em;
+  flex: 1;
 }
-.tak-marker-label {
-  position: absolute;
-  left: 50%;
-  top: 18px;
-  transform: translateX(-50%);
-  font-size: 10px;
-  color: #fff;
-  white-space: nowrap;
-  pointer-events: none;
-  text-shadow: 0 1px 3px rgba(0,0,0,0.9), 0 0 6px rgba(0,0,0,0.7);
+
+.setup-link-state {
+  font-family: "Press Start Local", monospace;
+  font-size: 8px;
+  color: var(--danger);
+}
+
+.setup-link-state.is-online {
+  color: var(--success);
+}
+
+.setup-close {
+  flex-shrink: 0;
+}
+
+.setup-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.setup-footer {
+  font-family: "Press Start Local", monospace;
+  font-size: 8px;
+  color: var(--muted);
+  text-align: center;
+  padding: 8px;
+  border-top: 2px solid var(--edge-light);
+  background: var(--panel-2);
+}
+
+/* --- main menu --- */
+.setup-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 460px;
+  margin: 18px auto 0;
+}
+
+.setup-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: "Press Start Local", monospace;
+  font-size: 11px;
+  color: var(--ink);
+  background: transparent;
+  border: 2px solid transparent;
+  padding: 10px 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.setup-menu-item .setup-cursor {
+  width: 14px;
+  color: var(--success);
+  visibility: hidden;
+}
+
+.setup-menu-item.is-active {
+  background: var(--panel-2);
+  border-top: 2px solid var(--edge-light);
+  border-left: 2px solid var(--edge-light);
+  border-right: 2px solid var(--edge-dark);
+  border-bottom: 2px solid var(--edge-dark);
+}
+
+.setup-menu-item.is-active .setup-cursor {
+  visibility: visible;
+}
+
+.setup-menu-item-desc {
+  margin-left: auto;
   font-family: Consolas, "Cascadia Mono", "Courier New", monospace;
+  font-size: 10px;
+  color: var(--muted);
+  text-transform: none;
 }
-.tak-measure-label {
+
+/* --- sub screens --- */
+.setup-sub.hidden,
+.setup-menu.hidden {
+  display: none;
+}
+
+.setup-sub-title {
+  font-family: "Press Start Local", monospace;
+  font-size: 11px;
+  color: #ffffff;
+  margin-bottom: 12px;
+}
+
+.setup-section {
+  background: var(--panel-2);
+  border-top: 2px solid var(--edge-dark);
+  border-left: 2px solid var(--edge-dark);
+  border-right: 2px solid var(--edge-light);
+  border-bottom: 2px solid var(--edge-light);
+  padding: 10px;
+  margin-bottom: 12px;
+}
+
+.setup-section-label {
+  font-family: "Press Start Local", monospace;
+  font-size: 8px;
+  color: var(--muted);
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.setup-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 8px;
+}
+
+.setup-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.setup-field > span {
+  font-family: "Press Start Local", monospace;
+  font-size: 7px;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.setup-field input,
+.setup-field select,
+.setup-field textarea {
+  background: var(--bg-2);
+  color: var(--ink);
+  border-top: 2px solid var(--edge-dark);
+  border-left: 2px solid var(--edge-dark);
+  border-right: 2px solid var(--edge-light);
+  border-bottom: 2px solid var(--edge-light);
+  border-radius: 0;
+  padding: 6px 8px;
+  font-family: Consolas, "Cascadia Mono", "Courier New", monospace;
+  font-size: 11px;
+}
+
+.setup-field input:focus,
+.setup-field select:focus,
+.setup-field textarea:focus {
+  outline: 1px solid var(--success);
+}
+
+.setup-btn {
+  font-family: "Press Start Local", monospace;
+  font-size: 8px;
+  color: var(--ink);
+  background: var(--panel);
+  border-top: 2px solid var(--edge-light);
+  border-left: 2px solid var(--edge-light);
+  border-right: 2px solid var(--edge-dark);
+  border-bottom: 2px solid var(--edge-dark);
+  border-radius: 0;
+  padding: 8px 12px;
+  cursor: pointer;
+  text-transform: uppercase;
+}
+
+.setup-btn:hover {
+  filter: brightness(1.1);
+}
+
+.setup-btn:active {
+  border-top: 2px solid var(--edge-dark);
+  border-left: 2px solid var(--edge-dark);
+  border-right: 2px solid var(--edge-light);
+  border-bottom: 2px solid var(--edge-light);
+}
+
+.setup-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.setup-btn--primary {
+  color: #ffffff;
+  background: #3d4d42;
+}
+
+.setup-btn--danger {
+  color: #ffd7d7;
+  background: #4d3434;
+}
+
+.setup-btn-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.setup-status {
+  font-size: 10px;
+  color: var(--muted);
+  margin-left: auto;
+}
+
+/* --- toggle (transport / on-off) --- */
+.setup-toggle {
+  display: inline-flex;
+  gap: 0;
+}
+
+.setup-toggle button {
+  font-family: "Press Start Local", monospace;
+  font-size: 8px;
+  color: var(--muted);
+  background: var(--bg-2);
+  border-top: 2px solid var(--edge-dark);
+  border-left: 2px solid var(--edge-dark);
+  border-right: 2px solid var(--edge-light);
+  border-bottom: 2px solid var(--edge-light);
+  padding: 7px 14px;
+  cursor: pointer;
+  text-transform: uppercase;
+}
+
+.setup-toggle button.is-active {
+  color: #ffffff;
+  background: var(--panel);
+  border-top: 2px solid var(--edge-light);
+  border-left: 2px solid var(--edge-light);
+  border-right: 2px solid var(--edge-dark);
+  border-bottom: 2px solid var(--edge-dark);
+}
+
+/* --- TX power stepped slider --- */
+.setup-slider-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.setup-slider-row input[type="range"] {
+  flex: 1;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 14px;
+  background:
+    repeating-linear-gradient(90deg, var(--edge-light) 0 2px, transparent 2px 12px),
+    var(--bg-2);
+  border-top: 2px solid var(--edge-dark);
+  border-left: 2px solid var(--edge-dark);
+  border-right: 2px solid var(--edge-light);
+  border-bottom: 2px solid var(--edge-light);
+}
+
+.setup-slider-row input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 22px;
+  background: var(--success);
+  border-top: 2px solid var(--edge-light);
+  border-left: 2px solid var(--edge-light);
+  border-right: 2px solid var(--edge-dark);
+  border-bottom: 2px solid var(--edge-dark);
+  cursor: pointer;
+}
+
+.setup-slider-row input[type="range"]::-moz-range-thumb {
+  width: 12px;
+  height: 20px;
+  border-radius: 0;
+  background: var(--success);
+  border: 2px solid var(--edge-dark);
+  cursor: pointer;
+}
+
+.setup-slider-value {
+  font-family: "Press Start Local", monospace;
+  font-size: 10px;
+  color: var(--success);
+  min-width: 48px;
+  text-align: right;
+}
+
+/* --- advanced fold --- */
+.setup-fold > summary {
+  font-family: "Press Start Local", monospace;
+  font-size: 8px;
+  color: var(--muted);
+  text-transform: uppercase;
+  cursor: pointer;
+  padding: 6px 0;
+  list-style: none;
+}
+
+.setup-fold > summary::before {
+  content: "+ ";
+  color: var(--success);
+}
+
+.setup-fold[open] > summary::before {
+  content: "- ";
+}
+
+/* --- list rows (channels / contacts) --- */
+.setup-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  background: var(--panel);
+  border-top: 2px solid var(--edge-light);
+  border-left: 2px solid var(--edge-light);
+  border-right: 2px solid var(--edge-dark);
+  border-bottom: 2px solid var(--edge-dark);
+  margin-bottom: 8px;
+}
+
+.setup-row-name {
+  font-family: "Press Start Local", monospace;
+  font-size: 9px;
+  color: var(--ink);
+  word-break: break-all;
+}
+
+.setup-row-meta {
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.setup-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.setup-row-actions .setup-btn {
+  font-size: 7px;
+  padding: 5px 8px;
+}
+
+/* --- contact type chips --- */
+.setup-chip {
+  display: inline-block;
+  font-family: "Press Start Local", monospace;
+  font-size: 7px;
+  padding: 3px 6px;
+  text-transform: uppercase;
+  color: #0d0f11;
+  background: var(--muted);
+  border-top: 1px solid var(--edge-light);
+  border-left: 1px solid var(--edge-light);
+  border-right: 1px solid var(--edge-dark);
+  border-bottom: 1px solid var(--edge-dark);
+}
+
+.setup-chip--chat { background: #6fbf8f; }
+.setup-chip--repeater { background: #e8c030; }
+.setup-chip--room { background: #b08fe8; }
+.setup-chip--sensor { background: #6fc3c9; }
+.setup-chip--unknown { background: #8a93a0; }
+
+.setup-fav-star {
+  background: none;
+  border: none;
+  padding: 0 4px;
+  font-size: 14px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.setup-fav-star.is-favorite {
+  color: #ffd54a;
+}
+
+/* --- QR block --- */
+.setup-qr-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  background: var(--bg-2);
+  border-top: 2px solid var(--edge-dark);
+  border-left: 2px solid var(--edge-dark);
+  border-right: 2px solid var(--edge-light);
+  border-bottom: 2px solid var(--edge-light);
+  margin-top: 8px;
+}
+
+.setup-qr-block canvas {
+  image-rendering: pixelated;
+  border-top: 2px solid var(--edge-light);
+  border-left: 2px solid var(--edge-light);
+  border-right: 2px solid var(--edge-dark);
+  border-bottom: 2px solid var(--edge-dark);
+  max-width: 100%;
+}
+
+.setup-qr-uri {
+  width: 100%;
+  font-size: 9px;
+  color: var(--muted);
+  word-break: break-all;
+  max-height: 60px;
+  overflow-y: auto;
+}
+
+/* --- confirm overlay (ARE YOU SURE) --- */
+.setup-confirm {
+  border: 2px solid var(--danger);
+  background: #3a2626;
+  padding: 10px;
+  margin-top: 8px;
+}
+
+.setup-confirm-text {
+  font-family: "Press Start Local", monospace;
+  font-size: 9px;
+  color: #ffd7d7;
+  margin-bottom: 8px;
+}
+
+/* --- key/value rows (device info) --- */
+.setup-kv {
+  display: grid;
+  grid-template-columns: minmax(110px, auto) 1fr;
+  gap: 4px 12px;
+  font-size: 11px;
+}
+
+.setup-kv .setup-k {
+  color: var(--muted);
+  text-transform: uppercase;
+  font-size: 9px;
+}
+
+.setup-kv .setup-v {
+  color: var(--ink);
+  word-break: break-all;
+}
+
+.setup-pre {
+  background: var(--bg-2);
+  border-top: 2px solid var(--edge-dark);
+  border-left: 2px solid var(--edge-dark);
+  border-right: 2px solid var(--edge-light);
+  border-bottom: 2px solid var(--edge-light);
+  color: var(--ink);
+  font-size: 10px;
+  padding: 8px;
+  overflow: auto;
+  max-height: 220px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* ============================================================
+   Trace path result panel
+   ============================================================ */
+.trace-panel {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 230;
+  width: min(340px, calc(100vw - 36px));
+  padding: 0;
+}
+
+.trace-panel.hidden {
+  display: none;
+}
+
+.trace-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  background: linear-gradient(180deg, #4a5563 0%, #36404b 100%);
+  border-bottom: 2px solid var(--edge-dark);
+}
+
+.trace-panel-title {
+  font-family: "Press Start Local", monospace;
+  font-size: 9px;
+  color: #ffffff;
+}
+
+.trace-panel-body {
+  padding: 10px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.trace-hop {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  font-size: 11px;
+}
+
+.trace-hop-idx {
+  font-family: "Press Start Local", monospace;
+  font-size: 8px;
+  color: var(--muted);
+  width: 26px;
+}
+
+.trace-hop-hash {
+  font-family: Consolas, "Cascadia Mono", "Courier New", monospace;
+  color: var(--ink);
+  width: 42px;
+}
+
+.trace-hop-bar {
+  flex: 1;
+  height: 10px;
+  background: var(--bg-2);
+  border-top: 1px solid var(--edge-dark);
+  border-left: 1px solid var(--edge-dark);
+  border-right: 1px solid var(--edge-light);
+  border-bottom: 1px solid var(--edge-light);
   position: relative;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  padding: 2px 6px;
-  background: rgba(8, 12, 18, 0.88);
-  border: 1px solid rgba(74, 158, 255, 0.24);
-  color: #d8e6f2;
+}
+
+.trace-hop-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--success);
+}
+
+.trace-hop-bar > span.is-weak {
+  background: var(--danger);
+}
+
+.trace-hop-bar > span.is-mid {
+  background: #e8c030;
+}
+
+.trace-hop-snr {
+  font-size: 9px;
+  color: var(--muted);
+  width: 56px;
+  text-align: right;
+}
+
+.trace-meta {
   font-size: 10px;
-  line-height: 1.2;
-  white-space: nowrap;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+/* --- node list extras (MeshCore contacts) --- */
+.node-type-chip {
+  display: inline-block;
+  font-family: "Press Start Local", monospace;
+  font-size: 6px;
+  padding: 2px 4px;
+  margin-right: 4px;
+  text-transform: uppercase;
+  color: #0d0f11;
+  background: #8a93a0;
+  vertical-align: 1px;
+}
+
+.node-type-chip--chat { background: #6fbf8f; }
+.node-type-chip--repeater { background: #e8c030; }
+.node-type-chip--room { background: #b08fe8; }
+.node-type-chip--sensor { background: #6fc3c9; }
+
+.node-advert-age {
+  color: var(--muted);
+}
+
+.node-action-tlm,
+.node-action-admin {
+  font-family: "Press Start Local", monospace;
+  font-size: 6px;
+}
+
+/* ============================================================
+   Remote admin console (repeater/room CLI terminal)
+   ============================================================ */
+.admin-console {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 240;
+  width: min(620px, calc(100vw - 36px));
+  padding: 0;
+}
+
+.admin-console.hidden {
+  display: none;
+}
+
+.admin-console-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: linear-gradient(180deg, #4a5563 0%, #36404b 100%);
+  border-bottom: 2px solid var(--edge-dark);
+}
+
+.admin-console-title {
+  font-family: "Press Start Local", monospace;
+  font-size: 9px;
+  color: #ffffff;
+}
+
+.admin-console-target {
   font-family: Consolas, "Cascadia Mono", "Courier New", monospace;
-  text-shadow: 0 1px 2px rgba(0,0,0,0.8);
-  pointer-events: none;
+  font-size: 10px;
+  color: var(--success);
+  margin-right: auto;
+  word-break: break-all;
+}
+
+/* --- login prompt --- */
+.admin-login {
+  padding: 14px;
+}
+
+.admin-login.hidden {
+  display: none;
+}
+
+.admin-login-text {
+  font-family: "Press Start Local", monospace;
+  font-size: 9px;
+  color: var(--ink);
+  margin-bottom: 6px;
+  word-break: break-all;
+}
+
+.admin-login-hint {
+  font-family: "Press Start Local", monospace;
+  font-size: 7px;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+
+.admin-login-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.admin-login-row input {
+  flex: 1;
+  background: var(--bg-2);
+  color: var(--ink);
+  border-top: 2px solid var(--edge-dark);
+  border-left: 2px solid var(--edge-dark);
+  border-right: 2px solid var(--edge-light);
+  border-bottom: 2px solid var(--edge-light);
+  border-radius: 0;
+  padding: 6px 8px;
+  font-family: Consolas, "Cascadia Mono", "Courier New", monospace;
+  font-size: 12px;
+  letter-spacing: 2px;
+}
+
+.admin-login-row input:focus {
+  outline: 1px solid var(--success);
+}
+
+.admin-login-status {
+  font-family: "Press Start Local", monospace;
+  font-size: 8px;
+  color: var(--muted);
+  margin-top: 10px;
+  min-height: 12px;
+}
+
+.admin-login-status.is-denied {
+  color: var(--danger);
+  animation: admin-denied-blink 1s steps(2, start) 3;
+}
+
+@keyframes admin-denied-blink {
+  50% { opacity: 0; }
+}
+
+/* --- terminal --- */
+.admin-term {
+  padding: 10px;
+}
+
+.admin-term.hidden {
+  display: none;
+}
+
+.admin-term-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.admin-term-chips .setup-btn {
+  font-size: 7px;
+  padding: 5px 8px;
+}
+
+.admin-term-scroll {
+  height: min(300px, 45vh);
+  overflow-y: auto;
+  background: #07120a;
+  color: #7ecfaa;
+  font-family: Consolas, "Cascadia Mono", "Courier New", monospace;
+  font-size: 11px;
+  line-height: 1.45;
+  padding: 8px;
+  border-top: 2px solid var(--edge-dark);
+  border-left: 2px solid var(--edge-dark);
+  border-right: 2px solid var(--edge-light);
+  border-bottom: 2px solid var(--edge-light);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.admin-term-line--out {
+  color: #b8f5d2;
+}
+
+.admin-term-line--sys {
+  color: var(--muted);
+}
+
+.admin-term-line--err {
+  color: var(--danger);
+}
+
+.admin-term-line--other {
+  color: #6fc3c9;
+}
+
+.admin-term-inputrow {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.admin-term-prompt {
+  font-family: Consolas, "Cascadia Mono", "Courier New", monospace;
+  font-size: 12px;
+  color: var(--success);
+  align-self: center;
+}
+
+.admin-term-inputrow input {
+  flex: 1;
+  background: #07120a;
+  color: #7ecfaa;
+  caret-color: #7ecfaa;
+  border-top: 2px solid var(--edge-dark);
+  border-left: 2px solid var(--edge-dark);
+  border-right: 2px solid var(--edge-light);
+  border-bottom: 2px solid var(--edge-light);
+  border-radius: 0;
+  padding: 6px 8px;
+  font-family: Consolas, "Cascadia Mono", "Courier New", monospace;
+  font-size: 11px;
+}
+
+.admin-term-inputrow input:focus {
+  outline: 1px solid var(--success);
+}
+
+/* --- room join (chat DM header) --- */
+.chat-room-join-btn {
+  font-size: 7px;
+  padding: 6px 10px;
+}
+
+.chat-room-join-btn.hidden {
+  display: none;
+}
+
+.chat-room-join-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 8px;
+  background: var(--panel-2);
+  border-top: 2px solid var(--edge-dark);
+  border-left: 2px solid var(--edge-dark);
+  border-right: 2px solid var(--edge-light);
+  border-bottom: 2px solid var(--edge-light);
+}
+
+.chat-room-join-bar.hidden {
+  display: none;
+}
+
+.chat-room-join-label {
+  font-family: "Press Start Local", monospace;
+  font-size: 7px;
+  color: var(--muted);
+}
+
+.chat-room-join-bar input {
+  flex: 1;
+  min-width: 120px;
+  background: var(--bg-2);
+  color: var(--ink);
+  border-top: 2px solid var(--edge-dark);
+  border-left: 2px solid var(--edge-dark);
+  border-right: 2px solid var(--edge-light);
+  border-bottom: 2px solid var(--edge-light);
+  border-radius: 0;
+  padding: 5px 8px;
+  font-family: Consolas, "Cascadia Mono", "Courier New", monospace;
+  font-size: 11px;
+}
+
+.chat-room-join-status {
+  font-family: "Press Start Local", monospace;
+  font-size: 7px;
+  color: var(--muted);
+}
+
+.chat-room-join-status.is-denied {
+  color: var(--danger);
+}
+
+.chat-room-notice {
+  font-family: "Press Start Local", monospace;
+  font-size: 8px;
+  color: var(--success);
+  text-align: center;
+  padding: 8px 4px;
+}
+
+/* --- contact path line (SETUP > CONTACTS) --- */
+.setup-row-path {
+  flex-basis: 100%;
+  font-family: Consolas, "Cascadia Mono", "Courier New", monospace;
+  font-size: 10px;
+  color: var(--success);
 }

@@ -60,10 +60,7 @@ const nodeModalSubtitle = document.getElementById("nodeModalSubtitle");
 const nodeModalIdentity = document.getElementById("nodeModalIdentity");
 const nodeModalStatus = document.getElementById("nodeModalStatus");
 const nodeModalMetrics = document.getElementById("nodeModalMetrics");
-const nodeModalPorts = document.getElementById("nodeModalPorts");
-const nodeModalNeighbors = document.getElementById("nodeModalNeighbors");
 const nodeModalWeather = document.getElementById("nodeModalWeather");
-const nodeModalDecoded = document.getElementById("nodeModalDecoded");
 const nodeModalRaw = document.getElementById("nodeModalRaw");
 const modelManagerModal = document.getElementById("modelManagerModal");
 const modelManagerClose = document.getElementById("modelManagerClose");
@@ -229,33 +226,14 @@ const activeSwapsCard = document.getElementById("activeSwapsCard");
 const activeSwapsList = document.getElementById("activeSwapsList");
 const clearSwapsButton = document.getElementById("clearSwapsButton");
 const meshAiReplyToggle = document.getElementById("meshAiReplyToggle");
-const deviceMetaModal = document.getElementById("deviceMetaModal");
-const deviceMetaClose = document.getElementById("deviceMetaClose");
-const deviceMetaShortName = document.getElementById("deviceMetaShortName");
-const deviceMetaLongName = document.getElementById("deviceMetaLongName");
-const deviceMetaLat = document.getElementById("deviceMetaLat");
-const deviceMetaLon = document.getElementById("deviceMetaLon");
-const deviceMetaTakChannel = document.getElementById("deviceMetaTakChannel");
-const deviceMetaTakHopLimit = document.getElementById("deviceMetaTakHopLimit");
-const deviceMetaModemPreset = document.getElementById("deviceMetaModemPreset");
-const deviceMetaMeshHopLimit = document.getElementById("deviceMetaMeshHopLimit");
-const deviceMetaRegion = document.getElementById("deviceMetaRegion");
-const deviceMetaTxPower = document.getElementById("deviceMetaTxPower");
-const deviceMetaNodeRole = document.getElementById("deviceMetaNodeRole");
-const deviceMetaStatus = document.getElementById("deviceMetaStatus");
-const deviceMetaSave = document.getElementById("deviceMetaSave");
-const deviceMetaLocate = document.getElementById("deviceMetaLocate");
-const deviceResetNodeDb = document.getElementById("deviceResetNodeDb");
-const deviceMetaPortSelect = document.getElementById("deviceMetaPortSelect");
-const deviceMetaPortRefresh = document.getElementById("deviceMetaPortRefresh");
-const deviceMetaPortConnect = document.getElementById("deviceMetaPortConnect");
-const deviceMetaPortStatus = document.getElementById("deviceMetaPortStatus");
-const deviceConnectModal = document.getElementById("deviceConnectModal");
-const deviceConnectClose = document.getElementById("deviceConnectClose");
-const deviceConnectPortSelect = document.getElementById("deviceConnectPortSelect");
-const deviceConnectRefresh = document.getElementById("deviceConnectRefresh");
-const deviceConnectApply = document.getElementById("deviceConnectApply");
-const deviceConnectStatus = document.getElementById("deviceConnectStatus");
+const setupScreen = document.getElementById("setupScreen");
+const setupMenuEl = document.getElementById("setupMenu");
+const setupSubEl = document.getElementById("setupSub");
+const setupLinkState = document.getElementById("setupLinkState");
+const setupCloseButton = document.getElementById("setupCloseButton");
+const tracePanel = document.getElementById("tracePanel");
+const tracePanelBody = document.getElementById("tracePanelBody");
+const tracePanelClose = document.getElementById("tracePanelClose");
 const chatChannelModal = document.getElementById("chatChannelModal");
 const chatChannelModalClose = document.getElementById("chatChannelModalClose");
 const chatChannelModalForm = document.getElementById("chatChannelModalForm");
@@ -301,10 +279,10 @@ let latestAiSettingsPayload = null;
 let swapLnPollInterval = null;
 let showingDonateView = false;
 let latestMeshtasticConnected = false;
+let latestMeshStatus = {};
 let latestMessages = [];
 let latestLogs = [];
 let latestNodes = [];
-let latestMeshLinks = [];
 const unreadPeers = new Set(); // peer IDs with unread incoming messages
 let lastUnreadPeer = ""; // most recently received unread DM sender
 const HELP_MODAL_TITLE_DEFAULT = "About BLACKBOX NODE";
@@ -375,7 +353,7 @@ const walletState = {
   network: "mainnet",
   settings: {
     preferredUnit: "sats",
-    defaultTransport: "Meshtastic DM",
+    defaultTransport: "MeshCore DM",
   },
   lastFocused: null,
 };
@@ -701,6 +679,7 @@ function setChatPeerSelection(peerId, { syncWallet = true, persist = true } = {}
   if (chatPeerInfoButton) {
     chatPeerInfoButton.disabled = !chatState.selectedPeer;
   }
+  updateChatRoomJoinUi();
 }
 
 function getNodeAddress(node) {
@@ -709,11 +688,12 @@ function getNodeAddress(node) {
 
 function getNodeDisplayLabel(node) {
   const address = getNodeAddress(node);
-  const name = String(node?.longName || node?.shortName || address || "unknown").trim();
-  if (!address) {
-    return name;
+  const prefix = address.slice(0, 8);
+  const name = String(node?.longName || node?.shortName || "").trim();
+  if (!name) {
+    return prefix || "unknown";
   }
-  return name === address ? address : `${name} (${address})`;
+  return prefix ? `${name} [${prefix}]` : name;
 }
 
 function isFavoriteNode(node) {
@@ -754,7 +734,7 @@ function getSelectableNodes() {
   latestNodes.forEach((node) => {
     const address = getNodeAddress(node);
     if (!address || map.has(address)) return;
-    if (node.raw?.user?.isUnmessagable) return;
+    if (String(node.contactType || "") === "repeater") return; // repeaters take admin CLI, not DMs
     map.set(address, node);
   });
   return sortNodesForUi(Array.from(map.values()));
@@ -910,7 +890,10 @@ function renderChatPeerList() {
     const item = document.createElement("div");
     item.className = "chat-peer-item" + (isActive ? " is-active" : "") + (isFavorite ? " is-favorite" : "");
     item.dataset.peer = addr;
-    item.innerHTML = `<span class="chat-peer-item-text"><span class="chat-peer-item-name">${label}</span></span>` +
+    const roomChip = isRoomNode(node)
+      ? `<span class="node-type-chip node-type-chip--room">ROOM</span>`
+      : "";
+    item.innerHTML = `<span class="chat-peer-item-text">${roomChip}<span class="chat-peer-item-name">${label}</span></span>` +
       (isFavorite ? `<span class="node-favorite-indicator" title="Favorite"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l2.7 5.5 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.8 1-6.1-4.4-4.3 6.1-.9L12 3z"/></svg></span>` : "") +
       (hasUnread ? `<span class="chat-peer-unread" title="Unread messages"><svg width="14" height="11" viewBox="0 0 14 11" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="0.5" y="0.5" width="13" height="10" rx="1" stroke="currentColor"/><path d="M1 1l6 5 6-5" stroke="currentColor" stroke-linecap="round"/></svg></span>` : "");
     item.addEventListener("click", () => {
@@ -1349,6 +1332,11 @@ function renderDmChat() {
   }
   const raw = latestMessages.filter((message) => isPeerDmMessage(message, peerId));
   if (!raw.length) {
+    if (roomJoinNotices.has(peerId)) {
+      chatReplyText.innerHTML = "";
+      appendRoomJoinNotice(peerId);
+      return;
+    }
     renderChatEmpty("No DM history with this node yet.");
     return;
   }
@@ -1365,7 +1353,11 @@ function renderDmChat() {
     meta.className = "chat-bubble-meta";
     const author = message.direction === "out" ? "You" : (message.sender || "Node");
     const stamp = formatChatTime(message.createdAt);
-    meta.textContent = stamp ? `${author} | ${stamp}` : author;
+    let metaText = stamp ? `${author} | ${stamp}` : author;
+    if (message.direction === "out" && Number.isFinite(Number(message.rttMs))) {
+      metaText += ` | ▸▸ ${Math.round(message.rttMs)}ms`;
+    }
+    meta.textContent = metaText;
 
     if (message.direction === "out") {
       const ackIcon = document.createElement("span");
@@ -1484,6 +1476,7 @@ function renderDmChat() {
     bubble.append(meta, body);
     chatReplyText.appendChild(bubble);
   });
+  appendRoomJoinNotice(peerId);
   chatReplyText.scrollTop = chatReplyText.scrollHeight;
 }
 
@@ -1508,7 +1501,11 @@ function renderChannelChat() {
     meta.className = "chat-bubble-meta";
     const author = message.direction === "out" ? "You" : (message.sender || "Node");
     const stamp = formatChatTime(message.createdAt);
-    meta.textContent = stamp ? `${author} | ch${channel.channelIndex} | ${stamp}` : `${author} | ch${channel.channelIndex}`;
+    let metaText = stamp ? `${author} | ch${channel.channelIndex} | ${stamp}` : `${author} | ch${channel.channelIndex}`;
+    if (message.direction === "out" && Number.isFinite(Number(message.rttMs))) {
+      metaText += ` | ▸▸ ${Math.round(message.rttMs)}ms`;
+    }
+    meta.textContent = metaText;
 
     if (message.direction === "out") {
       const ackIcon = document.createElement("span");
@@ -2021,40 +2018,6 @@ function applyMeshAiReply(enabled) {
   meshAiReplyToggle.classList.toggle("ai-reply-btn--on", enabled);
 }
 
-function openDeviceMetaModal() {
-  deviceMetaModal.classList.remove("hidden");
-  deviceMetaModal.setAttribute("aria-hidden", "false");
-  deviceMetaStatus.textContent = "Loading...";
-  deviceMetaShortName.value = "";
-  deviceMetaLongName.value = "";
-  deviceMetaLat.value = "";
-  deviceMetaLon.value = "";
-  if (deviceMetaTakChannel) deviceMetaTakChannel.value = "";
-  if (deviceMetaTakHopLimit) deviceMetaTakHopLimit.value = "";
-  if (deviceMetaModemPreset) deviceMetaModemPreset.value = "LONG_FAST";
-  if (deviceMetaMeshHopLimit) deviceMetaMeshHopLimit.value = "";
-  if (deviceMetaRegion) deviceMetaRegion.value = "UNSET";
-  if (deviceMetaTxPower) deviceMetaTxPower.value = "";
-  if (deviceMetaNodeRole) deviceMetaNodeRole.value = "CLIENT";
-  fetchJson("/api/device-meta").then((data) => {
-    deviceMetaShortName.value = data.shortName || "";
-    deviceMetaLongName.value = data.longName || "";
-    deviceMetaLat.value = data.latitude != null ? data.latitude : "";
-    deviceMetaLon.value = data.longitude != null ? data.longitude : "";
-    if (deviceMetaTakChannel) deviceMetaTakChannel.value = data.takChannel != null ? data.takChannel : 0;
-    if (deviceMetaTakHopLimit) deviceMetaTakHopLimit.value = data.takHopLimit != null ? data.takHopLimit : 3;
-    if (deviceMetaModemPreset) deviceMetaModemPreset.value = data.modemPreset || "LONG_FAST";
-    if (deviceMetaMeshHopLimit) deviceMetaMeshHopLimit.value = data.meshHopLimit != null ? data.meshHopLimit : "";
-    if (deviceMetaRegion) deviceMetaRegion.value = data.region || "UNSET";
-    if (deviceMetaTxPower) deviceMetaTxPower.value = data.txPower != null ? data.txPower : "";
-    if (deviceMetaNodeRole) deviceMetaNodeRole.value = data.nodeRole || "CLIENT";
-    deviceMetaStatus.textContent = "";
-  }).catch((err) => {
-    deviceMetaStatus.textContent = `Load error: ${err.message}`;
-  });
-  refreshDeviceMetaPorts();
-}
-
 async function loadMapNodeOnlineWindow() {
   if (!mapNodeOnlineWindow && !nodesPanelOnlineWindow) return;
   try {
@@ -2080,17 +2043,6 @@ async function loadMapNodeOnlineWindow() {
   }
 }
 
-function closeDeviceMetaModal() {
-  deviceMetaModal.classList.add("hidden");
-  deviceMetaModal.setAttribute("aria-hidden", "true");
-}
-
-function closeDeviceConnectModal() {
-  if (!deviceConnectModal) return;
-  deviceConnectModal.classList.add("hidden");
-  deviceConnectModal.setAttribute("aria-hidden", "true");
-}
-
 function describeSerialPortOption(port) {
   const device = String(port?.device || "").trim();
   const description = String(port?.description || port?.product || port?.manufacturer || "").trim();
@@ -2099,166 +2051,6 @@ function describeSerialPortOption(port) {
   if (description) labelParts.push(description);
   labelParts.push(`[${sourceTag}]`);
   return labelParts.join(" - ");
-}
-
-async function refreshDeviceConnectPorts(preferredPort = "") {
-  if (!deviceConnectPortSelect || !deviceConnectStatus || !deviceConnectRefresh || !deviceConnectApply) return;
-  deviceConnectStatus.textContent = "Scanning serial ports...";
-  deviceConnectRefresh.disabled = true;
-  deviceConnectApply.disabled = true;
-  try {
-    const payload = await fetchJson("/api/meshtastic/ports");
-    const ports = Array.isArray(payload.ports) ? payload.ports : [];
-    const selectedPort = String(preferredPort || payload.selectedPort || "").trim();
-    deviceConnectPortSelect.innerHTML = "";
-
-    const autoOption = document.createElement("option");
-    autoOption.value = "";
-    autoOption.textContent = "Auto-detect (recommended)";
-    deviceConnectPortSelect.appendChild(autoOption);
-
-    let selectedMatched = false;
-    ports.forEach((port) => {
-      const device = String(port?.device || "").trim();
-      if (!device) return;
-      const option = document.createElement("option");
-      option.value = device;
-      option.textContent = describeSerialPortOption(port);
-      const shouldSelect = (selectedPort && device === selectedPort) || (!selectedPort && Boolean(port?.isSelected));
-      if (shouldSelect) {
-        option.selected = true;
-        selectedMatched = true;
-      }
-      deviceConnectPortSelect.appendChild(option);
-    });
-
-    if (selectedPort && !selectedMatched) {
-      const savedOption = document.createElement("option");
-      savedOption.value = selectedPort;
-      savedOption.textContent = `${selectedPort} - saved`;
-      savedOption.selected = true;
-      deviceConnectPortSelect.appendChild(savedOption);
-      selectedMatched = true;
-    }
-
-    if (!selectedMatched) {
-      deviceConnectPortSelect.value = "";
-    }
-
-    if (!payload.ok) {
-      deviceConnectStatus.textContent = payload.error || "Port scan failed.";
-    } else if (!ports.length) {
-      deviceConnectStatus.textContent = "No serial ports found. Connect your device and refresh.";
-    } else {
-      deviceConnectStatus.textContent = selectedPort
-        ? `Saved port: ${selectedPort}. Select a port and click Connect.`
-        : "Select a port and click Connect.";
-    }
-  } catch (error) {
-    deviceConnectStatus.textContent = `Port scan failed: ${error.message}`;
-  } finally {
-    deviceConnectRefresh.disabled = false;
-    deviceConnectApply.disabled = false;
-  }
-}
-
-async function connectMeshtasticPortFromModal() {
-  if (!deviceConnectPortSelect || !deviceConnectStatus || !deviceConnectRefresh || !deviceConnectApply) return;
-  const port = String(deviceConnectPortSelect.value || "").trim();
-  deviceConnectStatus.textContent = port
-    ? `Connecting to ${port}...`
-    : "Connecting with auto-detect...";
-  deviceConnectRefresh.disabled = true;
-  deviceConnectApply.disabled = true;
-  try {
-    await fetchJson("/api/meshtastic/connect", {
-      method: "POST",
-      body: JSON.stringify({ port }),
-    });
-    await loadStatus();
-    closeDeviceConnectModal();
-  } catch (error) {
-    deviceConnectStatus.textContent = `Connect failed: ${error.message}`;
-  } finally {
-    deviceConnectRefresh.disabled = false;
-    deviceConnectApply.disabled = false;
-  }
-}
-
-async function openDeviceConnectModal() {
-  if (!deviceConnectModal) return;
-  deviceConnectModal.classList.remove("hidden");
-  deviceConnectModal.setAttribute("aria-hidden", "false");
-  await refreshDeviceConnectPorts();
-}
-
-async function refreshDeviceMetaPorts() {
-  if (!deviceMetaPortSelect) return;
-  if (deviceMetaPortRefresh) deviceMetaPortRefresh.disabled = true;
-  if (deviceMetaPortConnect) deviceMetaPortConnect.disabled = true;
-  if (deviceMetaPortStatus) deviceMetaPortStatus.textContent = "Scanning ports...";
-  try {
-    const payload = await fetchJson("/api/meshtastic/ports");
-    const ports = Array.isArray(payload.ports) ? payload.ports : [];
-    const selectedPort = String(payload.selectedPort || "").trim();
-    deviceMetaPortSelect.innerHTML = "";
-    const autoOption = document.createElement("option");
-    autoOption.value = "";
-    autoOption.textContent = "Auto-detect (recommended)";
-    deviceMetaPortSelect.appendChild(autoOption);
-    let matched = false;
-    ports.forEach((port) => {
-      const device = String(port?.device || "").trim();
-      if (!device) return;
-      const option = document.createElement("option");
-      option.value = device;
-      option.textContent = describeSerialPortOption(port);
-      if ((selectedPort && device === selectedPort) || (!selectedPort && Boolean(port?.isSelected))) {
-        option.selected = true;
-        matched = true;
-      }
-      deviceMetaPortSelect.appendChild(option);
-    });
-    if (selectedPort && !matched) {
-      const saved = document.createElement("option");
-      saved.value = selectedPort;
-      saved.textContent = `${selectedPort} - saved`;
-      saved.selected = true;
-      deviceMetaPortSelect.appendChild(saved);
-    }
-    if (deviceMetaPortStatus) deviceMetaPortStatus.textContent = selectedPort ? `Active: ${selectedPort}` : "";
-  } catch (e) {
-    if (deviceMetaPortStatus) deviceMetaPortStatus.textContent = `Scan failed: ${e.message}`;
-  } finally {
-    if (deviceMetaPortRefresh) deviceMetaPortRefresh.disabled = false;
-    if (deviceMetaPortConnect) deviceMetaPortConnect.disabled = false;
-  }
-}
-
-async function connectDeviceMetaPort() {
-  if (!deviceMetaPortSelect) return;
-  const port = String(deviceMetaPortSelect.value || "").trim();
-  if (deviceMetaPortRefresh) deviceMetaPortRefresh.disabled = true;
-  if (deviceMetaPortConnect) deviceMetaPortConnect.disabled = true;
-  if (deviceMetaPortStatus) deviceMetaPortStatus.textContent = port ? `Connecting to ${port}...` : "Connecting with auto-detect...";
-  try {
-    await fetchJson("/api/meshtastic/connect", { method: "POST", body: JSON.stringify({ port }) });
-    await loadStatus();
-    if (deviceMetaPortStatus) deviceMetaPortStatus.textContent = port ? `Connected to ${port}` : "Connected";
-  } catch (e) {
-    if (deviceMetaPortStatus) deviceMetaPortStatus.textContent = `Connect failed: ${e.message}`;
-  } finally {
-    if (deviceMetaPortRefresh) deviceMetaPortRefresh.disabled = false;
-    if (deviceMetaPortConnect) deviceMetaPortConnect.disabled = false;
-  }
-}
-
-if (deviceMetaPortRefresh) {
-  deviceMetaPortRefresh.addEventListener("click", refreshDeviceMetaPorts);
-}
-
-if (deviceMetaPortConnect) {
-  deviceMetaPortConnect.addEventListener("click", connectDeviceMetaPort);
 }
 
 function openWalletTestModeWarningModal() {
@@ -2866,7 +2658,7 @@ function queueMeshSend() {
   const recipient = walletRecipientInput.value.trim();
   const amount = walletAmountInput.value.trim();
   const unit = "sats";
-  const transport = "Meshtastic DM";
+  const transport = "MeshCore DM";
   const memo = walletMemoInput.value.trim();
 
   if (!recipient) {
@@ -2943,10 +2735,87 @@ function handleWalletModalFocusTrap(event) {
   }
 }
 
-function renderNodes(nodes = [], meshLinks = []) {
+function shortPubkey(node) {
+  return getNodeAddress(node).slice(0, 8);
+}
+
+function formatAdvertAge(lastHeardEpochSecs) {
+  const ts = Number(lastHeardEpochSecs);
+  if (!Number.isFinite(ts) || ts <= 0) return "";
+  const ageSecs = Math.max(0, Math.floor(Date.now() / 1000 - ts));
+  if (ageSecs < 60) return "ADV <1m AGO";
+  if (ageSecs < 3600) return `ADV ${Math.floor(ageSecs / 60)}m AGO`;
+  if (ageSecs < 86400) return `ADV ${Math.floor(ageSecs / 3600)}h AGO`;
+  return `ADV ${Math.floor(ageSecs / 86400)}d AGO`;
+}
+
+const CONTACT_TYPE_LABELS = {
+  chat: "CHAT",
+  repeater: "RPTR",
+  room: "ROOM",
+  sensor: "SENS",
+};
+
+// Room server sessions (admin_login to a room contact). Tracked client-side so
+// the chat UI can offer JOIN and show the "joined" notice in the thread.
+const roomSessions = new Set();
+const roomJoinNotices = new Map();
+let roomJoinPendingId = "";
+
+function isRoomNode(node) {
+  return String(node?.contactType || "").toLowerCase() === "room";
+}
+
+function isAdminTargetNode(node) {
+  const type = String(node?.contactType || "").toLowerCase();
+  return type === "repeater" || type === "room";
+}
+
+function contactTypeChipHtml(node) {
+  const type = String(node?.contactType || "").toLowerCase();
+  if (!CONTACT_TYPE_LABELS[type]) return "";
+  return `<span class="node-type-chip node-type-chip--${type}">${CONTACT_TYPE_LABELS[type]}</span>`;
+}
+
+// Display name: contact name first, 8-hex pubkey prefix when the name is
+// empty or duplicated across contacts.
+function buildNodeNameMap(nodes) {
+  const counts = new Map();
+  for (const node of nodes) {
+    const name = String(node?.longName || node?.shortName || "").trim();
+    if (name) counts.set(name, (counts.get(name) || 0) + 1);
+  }
+  const labels = new Map();
+  for (const node of nodes) {
+    const address = getNodeAddress(node);
+    const name = String(node?.longName || node?.shortName || "").trim();
+    const prefix = shortPubkey(node) || address || "unknown";
+    if (!name) {
+      labels.set(address, prefix);
+    } else if ((counts.get(name) || 0) > 1) {
+      labels.set(address, `${name} [${prefix}]`);
+    } else {
+      labels.set(address, name);
+    }
+  }
+  return labels;
+}
+
+function requestNodeTelemetry(nodeId, statusCallback) {
+  return fetchJson("/api/mesh/command", {
+    method: "POST",
+    body: JSON.stringify({ type: "request_telemetry", payload: { contactId: nodeId } }),
+  }).then(() => {
+    if (statusCallback) statusCallback("TLM requested...");
+  }).catch((error) => {
+    if (statusCallback) statusCallback(`TLM failed: ${error.message}`);
+  });
+}
+
+function renderNodes(nodes = []) {
   const displayNodes = sortNodesForUi(nodes);
+  const nameLabels = buildNodeNameMap(displayNodes);
   latestNodes = displayNodes;
-  latestMeshLinks = Array.isArray(meshLinks) ? meshLinks.slice() : [];
   const onlineCount = latestNodes.filter((n) => n.online).length;
   const countEl = document.getElementById("nodesOnlineCount");
   if (countEl) countEl.innerHTML = onlineCount > 0
@@ -2968,21 +2837,23 @@ function renderNodes(nodes = [], meshLinks = []) {
     item.className = `node-item ${node.online ? "online" : "offline"} ${node.role === "weather" ? "weather" : ""} ${node.live ? "live" : "snapshot"} ${isFavoriteNode(node) ? "favorite" : ""}`;
     const nodeAddress = getNodeAddress(node);
 
-    const name = node.longName || node.shortName || nodeAddress || "unknown";
+    const name = nameLabels.get(nodeAddress) || shortPubkey(node) || "unknown";
     const metaParts = [];
     if (nodeAddress) {
-      metaParts.push(nodeAddress);
+      metaParts.push(shortPubkey(node));
     }
-    if (node.shortName && node.shortName !== name) {
-      metaParts.push(node.shortName);
+    const advertAge = formatAdvertAge(node.lastHeard);
+    if (advertAge) {
+      metaParts.push(advertAge);
     }
-    if (node.hardware) {
-      metaParts.push(node.hardware);
+    if (node.hopsAway != null) {
+      metaParts.push(`PATH ${node.hopsAway} HOP${node.hopsAway === 1 ? "" : "S"}`);
+    } else if (node.isFlood) {
+      metaParts.push("FLOOD");
     }
     if (node.batteryLevel !== null && node.batteryLevel !== undefined) {
       metaParts.push(`${node.batteryLevel}%`);
     }
-    metaParts.push(node.live ? "live packets" : "snapshot only");
 
     item.innerHTML = `
       <span class="node-dot"></span>
@@ -2996,6 +2867,8 @@ function renderNodes(nodes = [], meshLinks = []) {
             <path d="M12 3l2.7 5.5 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.8 1-6.1-4.4-4.3 6.1-.9L12 3z"></path>
           </svg>
         </button>
+        <button type="button" class="node-action-btn node-action-tlm" title="Request telemetry" aria-label="Request telemetry from node">TLM</button>
+        <button type="button" class="node-action-btn node-action-admin" title="Remote admin console" aria-label="Open remote admin console">ADM</button>
         <button type="button" class="node-action-btn node-action-message" title="Send message" aria-label="Send message to node">
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
             <path d="M4 5h16v10H8l-4 4V5z"></path>
@@ -3009,13 +2882,36 @@ function renderNodes(nodes = [], meshLinks = []) {
         </button>
       </div>
     `;
-    item.querySelector(".node-name").textContent = name;
+    const nameEl = item.querySelector(".node-name");
+    nameEl.innerHTML = contactTypeChipHtml(node);
+    nameEl.appendChild(document.createTextNode(name));
     item.querySelector(".node-meta").textContent = metaParts.join(" | ") || (node.online ? "online" : "offline");
 
     const favoriteButton = item.querySelector(".node-action-favorite");
+    const tlmButton = item.querySelector(".node-action-tlm");
+    if (!nodeAddress) {
+      tlmButton.disabled = true;
+    } else {
+      tlmButton.addEventListener("click", (event) => {
+        event.stopPropagation();
+        tlmButton.disabled = true;
+        requestNodeTelemetry(nodeAddress, () => {}).finally(() => {
+          setTimeout(() => { tlmButton.disabled = false; }, 3000);
+        });
+      });
+    }
+    const adminButton = item.querySelector(".node-action-admin");
+    if (!isAdminTargetNode(node) || !nodeAddress) {
+      adminButton.remove();
+    } else {
+      adminButton.addEventListener("click", (event) => {
+        event.stopPropagation();
+        openAdminConsole(nodeAddress);
+      });
+    }
     const messageButton = item.querySelector(".node-action-message");
     const cashuButton = item.querySelector(".node-action-cashu");
-    const isUnmessagable = !!(node.raw?.user?.isUnmessagable);
+    const isUnmessagable = String(node.contactType || "") === "repeater";
     setFavoriteButtonState(favoriteButton, isFavoriteNode(node));
     if (!nodeAddress) {
       favoriteButton.disabled = true;
@@ -3025,7 +2921,7 @@ function renderNodes(nodes = [], meshLinks = []) {
         favoriteButton.disabled = true;
         try {
           await toggleNodeFavorite(nodeAddress, !isFavoriteNode(node));
-          renderNodes(latestNodes, latestMeshLinks);
+          renderNodes(latestNodes);
         } catch (e) {
           favoriteButton.disabled = false;
         }
@@ -3144,77 +3040,64 @@ async function openNodeModal(nodeId) {
     const payload = await fetchJson(`/api/node-raw?id=${encodeURIComponent(nodeId)}`);
     const isOnline = !!payload.online;
     nodeModalDot.className = `node-dot${isOnline ? " node-dot--online" : " node-dot--offline"}`;
-    nodeModalSubtitle.textContent = `${payload.role || "node"} | ${payload.observedPortnums?.length ? "live packets seen" : "snapshot only"}`;
+    const advertAge = formatAdvertAge(payload.lastHeard);
+    nodeModalSubtitle.textContent = [
+      String(payload.contactType || "contact").toUpperCase(),
+      advertAge || "no advert seen",
+    ].join(" | ");
     setFavoriteButtonState(nodeModalFavoriteButton, Boolean(payload.favorite));
 
-    const raw = payload.raw || {};
-    const lat = raw.position?.latitude ?? raw.latitude;
-    const lon = raw.position?.longitude ?? raw.longitude;
-    const alt = raw.position?.altitude ?? raw.altitude ?? null;
+    const lat = payload.latitude;
+    const lon = payload.longitude;
+    const pubkey = String(payload.userId || payload.id || "");
 
     renderKv(nodeModalIdentity, [
-      ["Name", payload.longName || payload.shortName || payload.userId || payload.id],
-      ["ID", payload.userId || payload.id],
-      ["Short", payload.shortName],
-      ["Hardware", payload.hardware || raw.user?.hwModel],
-      ...(payload.meshtasticRole ? [["Role", payload.meshtasticRole]] : []),
-      ...(payload.modemPreset ? [["Modem", payload.modemPreset]] : []),
-      ...(lat != null && lat !== 0 ? [["Lat", Number(lat).toFixed(5)], ["Lon", Number(lon).toFixed(5)]] : []),
-      ...(alt != null && alt !== 0 ? [["Alt", `${alt} m`]] : []),
+      ["Name", payload.longName || payload.shortName || pubkey.slice(0, 8)],
+      ["Pubkey", pubkey],
+      ["Type", String(payload.contactType || "unknown").toUpperCase()],
+      ...(lat != null && lat !== 0 && lon != null ? [["Lat", Number(lat).toFixed(5)], ["Lon", Number(lon).toFixed(5)]] : []),
     ]);
 
-    const lastPkt = payload.lastPacket || {};
-    const rssi = lastPkt.rxRssi ?? raw.rxRssi ?? null;
-    const channelIdx = lastPkt.channel ?? raw.channel ?? null;
-    const snrVal = raw.snr ?? payload.snr ?? null;
-    const hopsVal = raw.hopsAway ?? payload.hopsAway ?? null;
     const lastHeardStr = payload.lastHeard
-      ? new Date(payload.lastHeard * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+      ? new Date(payload.lastHeard * 1000).toLocaleString([], { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })
       : null;
+    const pathLabel = payload.hopsAway != null
+      ? `${payload.hopsAway} hop${payload.hopsAway === 1 ? "" : "s"} (direct)`
+      : "flood";
 
     renderKv(nodeModalStatus, [
       ["Online", isOnline ? "yes" : "no"],
-      ["Live", payload.live ? "yes" : "no"],
-      ["Hops", hopsVal ?? "-"],
-      ["SNR", formatMetric("SNR", snrVal)],
-      ...(rssi != null ? [["RSSI", `${rssi} dBm`]] : []),
-      ...(lastHeardStr ? [["Last heard", lastHeardStr]] : []),
-      ...(channelIdx != null ? [["Channel", channelIdx]] : []),
+      ["Routing", pathLabel],
+      ...(payload.outPath ? [["Out path", payload.outPath]] : []),
+      ["SNR", formatMetric("SNR", payload.snr ?? null)],
+      ...(advertAge ? [["Advert", advertAge]] : []),
+      ...(lastHeardStr ? [["Last advert", lastHeardStr]] : []),
     ]);
 
-    const metrics = raw.deviceMetrics || payload.lastDecoded?.deviceMetrics || payload.lastDecoded?.localStats || {};
     renderKv(nodeModalMetrics, [
-      ["Battery", formatMetric("Battery", metrics.batteryLevel)],
-      ["Voltage", formatMetric("Voltage", metrics.voltage)],
-      ["Uptime", formatMetric("Uptime", metrics.uptimeSeconds)],
-      ["Ch util", formatMetric("Channel util", metrics.channelUtilization)],
-      ["Air util", formatMetric("Air util tx", metrics.airUtilTx)],
+      ...(payload.batteryLevel != null ? [["Battery", formatMetric("Battery", payload.batteryLevel)]] : []),
+      ...(payload.voltage != null ? [["Voltage", formatMetric("Voltage", payload.voltage)]] : []),
+      ...(payload.lastTelemetryAt ? [["Telemetry at", new Date(payload.lastTelemetryAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })]] : []),
     ]);
-
-    nodeModalPorts.innerHTML = "";
-    const ports = payload.observedPortnums || [];
-    if (ports.length) {
-      ports.forEach((port) => {
-        const badge = document.createElement("span");
-        badge.className = "modal-port";
-        badge.textContent = port;
-        nodeModalPorts.appendChild(badge);
+    // On-demand telemetry pull (MeshCore telemetry is pull-based).
+    const tlmRow = document.createElement("div");
+    tlmRow.style.marginTop = "6px";
+    const tlmBtn = document.createElement("button");
+    tlmBtn.type = "button";
+    tlmBtn.className = "setup-btn";
+    tlmBtn.textContent = "REQUEST TELEMETRY";
+    tlmBtn.addEventListener("click", () => {
+      tlmBtn.disabled = true;
+      tlmBtn.textContent = "REQUESTED...";
+      requestNodeTelemetry(pubkey, () => {}).finally(() => {
+        setTimeout(() => {
+          tlmBtn.disabled = false;
+          tlmBtn.textContent = "REQUEST TELEMETRY";
+        }, 5000);
       });
-    } else {
-      nodeModalPorts.innerHTML = '<div class="node-empty">No live packets yet</div>';
-    }
-
-    const neighbors = payload.neighbors || [];
-    if (neighbors.length) {
-      nodeModalNeighbors.classList.remove("hidden");
-      const badges = neighbors.map((n) => {
-        const snrTag = n.snr != null ? `<span class="node-neighbor-snr">${n.snr} dB</span>` : "";
-        return `<span class="node-neighbor-badge"><span class="node-neighbor-id">${n.nodeId}</span>${snrTag}</span>`;
-      }).join("");
-      nodeModalNeighbors.innerHTML = `<div class="modal-label">Neighbors</div><div class="node-neighbors-list">${badges}</div>`;
-    } else {
-      nodeModalNeighbors.classList.add("hidden");
-    }
+    });
+    tlmRow.appendChild(tlmBtn);
+    nodeModalMetrics.appendChild(tlmRow);
 
     const env = payload.environmentMetrics || {};
     const hasWeather = env.temperature != null || env.relativeHumidity != null || env.barometricPressure != null || env.windSpeed != null || env.iaq != null;
@@ -3225,11 +3108,10 @@ async function openNodeModal(nodeId) {
       nodeModalWeather.classList.add("hidden");
     }
 
-    nodeModalDecoded.textContent = JSON.stringify(payload.lastDecoded || {}, null, 2);
-    nodeModalRaw.textContent = JSON.stringify(payload.raw || {}, null, 2);
+    nodeModalRaw.textContent = JSON.stringify(payload, null, 2);
 
-    const peerId = payload.userId || payload.id;
-    const modalUnmessagable = !!(payload.raw?.user?.isUnmessagable);
+    const peerId = pubkey;
+    const modalUnmessagable = String(payload.contactType || "") === "repeater";
     if (nodeModalFavoriteButton) {
       nodeModalFavoriteButton.disabled = !peerId;
       nodeModalFavoriteButton.onclick = async () => {
@@ -3239,7 +3121,7 @@ async function openNodeModal(nodeId) {
           await toggleNodeFavorite(peerId, !Boolean(payload.favorite));
           payload.favorite = !Boolean(payload.favorite);
           setFavoriteButtonState(nodeModalFavoriteButton, Boolean(payload.favorite));
-          renderNodes(latestNodes, latestMeshLinks);
+          renderNodes(latestNodes);
         } catch (e) {
           setFavoriteButtonState(nodeModalFavoriteButton, Boolean(payload.favorite));
         } finally {
@@ -3307,36 +3189,10 @@ const MAP_PREFS_STORAGE_KEY = "nodesMapPrefs";
 let _mapPrefsSaveTimer = null;
 let _mapSavedView = null;
 
-// Р Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљ TAK / ATAK layer mode Р Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљ
-let _takIncomingLayer = null;          // Leaflet LayerGroup for network-received features
-const _takIncomingMap = new Map();     // uid -> Leaflet layer (for dedup/update)
-const _takIncomingFeatures = new Map(); // uid -> latest incoming TAK feature payload
-const _takPendingSends = new Map();    // uid -> { timer, layerId }
-const _takLayerSendState = new Map();  // layerId -> { state, text }
-const _takLayerSendTimers = new Map(); // layerId -> timeout handle
-// _takClickTimer removed Р Р†Р вЂљРІР‚Сњ dblclick handling uses pop-2 phantom point removal instead
-let _mapTakMode = false;
-let _takAutoLayerVis = { online: true, offline: true };
-let _takCustomLayers = [];   // { id, name, color, visible, items: [] }
-let _takActiveLayerId = null;
-let _takDrawMode = null;     // null | 'marker' | 'circle' | 'ruler'
-let _takDrawPoints = [];
-let _takDrawTempLayer = null;
-let _takFeatureLayers = {};  // layerId -> Leaflet LayerGroup
-let _takIgnoreMapClicksUntil = 0;
-let _takToolPrefs = {};
-let _takEditorPreviewLayer = null;
-
-const _TAK_MARKER_PRESETS = [
-  { id: "waypoint", label: "Waypoint", cotType: "b-m-p-w", color: "#4a9eff", symbol: "dot" },
-  { id: "friendly", label: "Friendly", cotType: "a-f-G-U-C", color: "#4a9eff", symbol: "square" },
-  { id: "hostile", label: "Hostile", cotType: "a-h-G-U-C", color: "#ff5555", symbol: "diamond" },
-  { id: "neutral", label: "Neutral", cotType: "a-n-G-U-C", color: "#4caf50", symbol: "triangle" },
-  { id: "unknown", label: "Unknown", cotType: "a-u-G", color: "#ffc107", symbol: "triangle" },
-  { id: "target", label: "Target", cotType: "a-h-G", color: "#ff9043", symbol: "crosshair" },
-  { id: "sensor", label: "Sensor", cotType: "a-f-G-E-V-C", color: "#00d4d4", symbol: "hex" },
-];
-
+// Р Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљ Map layer visibility Р Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљ
+// Online/offline node layer visibility (map "Network Layers" panel)
+let _mapAutoLayerVis = { online: true, offline: true };
+// Р Р†Р вЂљРІР‚Сњ dblclick handling uses pop-2 phantom point removal instead
 function _loadMapPrefs() {
   try {
     const raw = localStorage.getItem(MAP_PREFS_STORAGE_KEY);
@@ -3350,9 +3206,8 @@ function _loadMapPrefs() {
     if (Number.isFinite(Number(prefs.hoverMaxHops))) {
       _mapHoverMaxHops = Math.max(1, Math.min(9, Number(prefs.hoverMaxHops)));
     }
-    if (typeof prefs.takMode === "boolean") _mapTakMode = prefs.takMode;
     if (prefs.autoLayers && typeof prefs.autoLayers === "object") {
-      _takAutoLayerVis = {
+      _mapAutoLayerVis = {
         online: prefs.autoLayers.online !== false,
         offline: prefs.autoLayers.offline !== false,
       };
@@ -3380,10 +3235,9 @@ function _saveMapPrefs() {
       showLinks: _mapShowLinks,
       colorByRole: _mapColorByRole,
       hoverMaxHops: _mapHoverMaxHops,
-      takMode: _mapTakMode,
       autoLayers: {
-        online: _takAutoLayerVis.online !== false,
-        offline: _takAutoLayerVis.offline !== false,
+        online: _mapAutoLayerVis.online !== false,
+        offline: _mapAutoLayerVis.offline !== false,
       },
       view,
     }));
@@ -3427,119 +3281,11 @@ function _syncMapControls() {
   if (roleBtn) roleBtn.classList.toggle("nodes-map-toggle-btn--active", _mapColorByRole);
   const roleLegend = document.getElementById("mapRoleLegend");
   if (roleLegend) roleLegend.style.display = _mapColorByRole ? "" : "none";
-
-  const takBtn = document.getElementById("mapToggleTak");
-  if (takBtn) takBtn.classList.toggle("nodes-map-toggle-btn--active", _mapTakMode);
 }
 
 _loadMapPrefs();
 
-function _takBumpIgnoreMapClick(ms = 350) {
-  _takIgnoreMapClicksUntil = Math.max(_takIgnoreMapClicksUntil, Date.now() + ms);
-}
-
-function _takEnsureEditorPreviewLayer() {
-  if (!_mapInstance) return null;
-  if (!_takEditorPreviewLayer) {
-    _takEditorPreviewLayer = L.layerGroup().addTo(_mapInstance);
-  }
-  return _takEditorPreviewLayer;
-}
-
-function _takClearEditorPreview() {
-  if (_takEditorPreviewLayer) {
-    try { _takEditorPreviewLayer.clearLayers(); } catch (e) {}
-  }
-}
-
-function _takRenderEditorPreview(feature) {
-  if (!_mapInstance || !feature) return;
-  const layer = _takEnsureEditorPreviewLayer();
-  if (!layer) return;
-  _takClearEditorPreview();
-  const preview = _takNormalizeFeature(feature, feature.color || "#4a9eff");
-  const color = preview.color || "#4a9eff";
-  const fillColor = preview.fillColor || color;
-  const dashArray = _takStrokeStyleToDashArray(preview.strokeStyle);
-  let leafletFeature = null;
-  if (preview.type === "marker" && preview.latlng) {
-    const icon = L.divIcon({
-      className: "",
-      html: _takBuildMarkerHtml(preview, "Waypoint"),
-      iconSize: [16, 16],
-      iconAnchor: [8, 8],
-    });
-    leafletFeature = L.marker(preview.latlng, { icon });
-  } else if (preview.type === "polyline" && Array.isArray(preview.latlngs) && preview.latlngs.length >= 2) {
-    leafletFeature = L.polyline(preview.latlngs, {
-      color,
-      weight: Math.max(2, preview.strokeWeight + 1 || 2.5),
-      opacity: 0.9,
-      dashArray,
-    });
-  } else if (preview.type === "polygon" && Array.isArray(preview.latlngs) && preview.latlngs.length >= 3) {
-    leafletFeature = L.polygon(preview.latlngs, {
-      color,
-      weight: Math.max(2, preview.strokeWeight || 2),
-      opacity: 0.9,
-      fillColor,
-      fillOpacity: 0.12,
-      dashArray,
-    });
-  } else if (preview.type === "circle" && preview.latlng && preview.radiusMeters > 0) {
-    leafletFeature = L.featureGroup([
-      L.circle(preview.latlng, {
-        radius: preview.radiusMeters,
-        color,
-        weight: Math.max(2, preview.strokeWeight || 2),
-        opacity: 0.9,
-        fillColor,
-        fillOpacity: 0.12,
-        dashArray,
-      }),
-      L.circleMarker(preview.latlng, { radius: 3, color, weight: 2, fillColor: color, fillOpacity: 1 }),
-    ]);
-  } else if (preview.type === "ruler" && preview.latlng && preview.rangeMeters > 0) {
-    const dest = _takDestinationPoint(preview.latlng, preview.rangeMeters, preview.bearingDeg || 0);
-    if (dest) {
-      leafletFeature = L.featureGroup([
-        L.polyline([preview.latlng, dest], { color, weight: Math.max(2, preview.strokeWeight + 1 || 2.5), opacity: 0.9, dashArray: dashArray || "6 4" }),
-        L.circleMarker(preview.latlng, { radius: 3, color, weight: 2, fillColor: color, fillOpacity: 1 }),
-        L.circleMarker(dest, { radius: 3, color, weight: 2, fillColor: color, fillOpacity: 1 }),
-      ]);
-    }
-  }
-  if (leafletFeature) layer.addLayer(leafletFeature);
-}
-
-function _takGetMapEditor() {
-  if (!_mapInstance) return null;
-  const host = _mapInstance.getContainer();
-  let editor = host.querySelector("#takMapEditor");
-  if (!editor) {
-    editor = document.createElement("div");
-    editor.id = "takMapEditor";
-    editor.className = "tak-map-editor hidden";
-    host.appendChild(editor);
-    _takShieldUiElement(editor);
-  }
-  return editor;
-}
-
-function _takFeatureAnchorLatLng(feature) {
-  if (Array.isArray(feature?.latlng) && feature.latlng.length >= 2) {
-    return { lat: feature.latlng[0], lng: feature.latlng[1] };
-  }
-  if (Array.isArray(feature?.latlngs) && feature.latlngs.length > 0) {
-    const count = feature.latlngs.length;
-    const lat = feature.latlngs.reduce((sum, point) => sum + Number(point[0] || 0), 0) / count;
-    const lng = feature.latlngs.reduce((sum, point) => sum + Number(point[1] || 0), 0) / count;
-    return { lat, lng };
-  }
-  return null;
-}
-
-function _takEscapeHtml(value) {
+function _mapEscapeHtml(value) {
   return String(value == null ? "" : value)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -3547,180 +3293,26 @@ function _takEscapeHtml(value) {
     .replace(/"/g, "&quot;");
 }
 
-function _takLoadToolPrefs() {
-  try {
-    const raw = localStorage.getItem("takToolPrefs");
-    if (raw) _takToolPrefs = JSON.parse(raw) || {};
-  } catch (e) {}
-}
-
-function _takSaveToolPrefs() {
-  try {
-    localStorage.setItem("takToolPrefs", JSON.stringify(_takToolPrefs || {}));
-  } catch (e) {}
-}
-
-function _takMarkerPresetById(id) {
-  return _TAK_MARKER_PRESETS.find((preset) => preset.id === id) || _TAK_MARKER_PRESETS[0];
-}
-
-function _takMarkerPresetForCotType(cotType) {
-  const exact = _TAK_MARKER_PRESETS.find((preset) => preset.cotType === cotType);
-  if (exact) return exact;
-  const type = String(cotType || "");
-  if (type.startsWith("a-f-")) return _takMarkerPresetById("friendly");
-  if (type.startsWith("a-h-")) return _takMarkerPresetById("hostile");
-  if (type.startsWith("a-n-")) return _takMarkerPresetById("neutral");
-  if (type.startsWith("a-u-")) return _takMarkerPresetById("unknown");
-  if (type.startsWith("b-m-p-")) return _takMarkerPresetById("waypoint");
-  return _TAK_MARKER_PRESETS[0];
-}
-
-function _takSymbolSvg(symbol, color) {
-  const fill = _takEscapeHtml(color || "#4a9eff");
-  if (symbol === "square") {
-    return `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="1" fill="${fill}" stroke="rgba(255,255,255,0.72)" stroke-width="1.5"/></svg>`;
-  }
-  if (symbol === "diamond") {
-    return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 21 12 12 21 3 12Z" fill="${fill}" stroke="rgba(255,255,255,0.72)" stroke-width="1.5"/></svg>`;
-  }
-  if (symbol === "triangle") {
-    return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4 20 19H4Z" fill="${fill}" stroke="rgba(255,255,255,0.72)" stroke-width="1.5"/></svg>`;
-  }
-  if (symbol === "crosshair") {
-    return `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7.5" fill="none" stroke="${fill}" stroke-width="2"/><path d="M12 3v5M12 16v5M3 12h5M16 12h5" stroke="rgba(255,255,255,0.72)" stroke-width="1.7" stroke-linecap="round"/></svg>`;
-  }
-  if (symbol === "hex") {
-    return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4h8l4 8-4 8H8l-4-8Z" fill="${fill}" stroke="rgba(255,255,255,0.72)" stroke-width="1.5"/></svg>`;
-  }
-  return `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="6.5" fill="${fill}" stroke="rgba(255,255,255,0.72)" stroke-width="1.5"/></svg>`;
-}
-
-function _takStrokeStyleToDashArray(style) {
-  const value = String(style || "solid").toLowerCase();
-  if (value === "dashed") return "8 4";
-  if (value === "dotted") return "2 6";
-  return null;
-}
-
-function _takFormatDistance(meters) {
+function _mapFormatDistance(meters) {
   const value = Number(meters);
   if (!Number.isFinite(value) || value <= 0) return "-";
   if (value >= 1000) return `${(value / 1000).toFixed(value >= 10000 ? 0 : 2)} km`;
   return `${Math.round(value)} m`;
 }
 
-function _takMidpoint(latlngA, latlngB) {
-  if (!Array.isArray(latlngA) || !Array.isArray(latlngB)) return null;
-  return [
-    (Number(latlngA[0]) + Number(latlngB[0])) / 2,
-    (Number(latlngA[1]) + Number(latlngB[1])) / 2,
-  ];
-}
-
-function _takMeasureLabelMarker(latlng, text) {
-  if (!Array.isArray(latlng) || latlng.length < 2) return null;
-  const icon = L.divIcon({
-    className: "",
-    html: `<div class="tak-measure-label">${_takEscapeHtml(text || "")}</div>`,
-    iconSize: [10, 10],
-    iconAnchor: [5, 5],
-  });
-  return L.marker(latlng, { icon, interactive: false, keyboard: false });
-}
-
-function _takBuildMarkerHtml(feature, fallbackTitle = "Waypoint") {
-  const preset = _takMarkerPresetForCotType(feature.cotType || feature.rawType || "");
-  const color = feature.color || preset.color || "#4a9eff";
-  const symbol = feature.markerSymbol || preset.symbol || "dot";
-  const label = _takEscapeHtml(feature.label || fallbackTitle || "");
-  return `<div class="tak-marker-icon"><div class="tak-marker-symbol">${_takSymbolSvg(symbol, color)}</div><span class="tak-marker-label">${label}</span></div>`;
-}
-
-function _takNormalizeFeature(item, fallbackColor = "#4a9eff") {
-  if (!item) return item;
-  const normalized = { ...item };
-  const preset = normalized.markerPreset
-    ? _takMarkerPresetById(normalized.markerPreset)
-    : _takMarkerPresetForCotType(normalized.cotType || normalized.rawType || "");
-  normalized.color = normalized.color || fallbackColor || preset.color || "#4a9eff";
-  normalized.fillColor = normalized.fillColor || normalized.color;
-  normalized.strokeStyle = normalized.strokeStyle || "solid";
-  normalized.strokeWeight = Number(normalized.strokeWeight) > 0 ? Number(normalized.strokeWeight) : 1;
-  normalized.remarks = normalized.remarks || "";
-  normalized.iconsetPath = normalized.iconsetPath || "";
-  if (normalized.type === "marker") {
-    normalized.markerPreset = normalized.markerPreset || preset.id;
-    const currentPreset = _takMarkerPresetById(normalized.markerPreset);
-    normalized.cotType = normalized.cotType || currentPreset.cotType || "b-m-p-w";
-    normalized.markerSymbol = currentPreset.symbol;
-  }
-  return normalized;
-}
-
-function _takConsumeUiEvent(event, ms = 350) {
-  _takBumpIgnoreMapClick(ms);
-  if (!event) return;
-  if (typeof event.stopPropagation === "function") event.stopPropagation();
-  if (typeof event.stopImmediatePropagation === "function") event.stopImmediatePropagation();
-}
-
-function _takShieldUiElement(element) {
-  if (!element || element.dataset.takShielded === "1") return;
-  element.dataset.takShielded = "1";
-  ["pointerdown", "mousedown", "mouseup", "touchstart", "click", "dblclick"].forEach((type) => {
-    element.addEventListener(type, (event) => {
-      _takConsumeUiEvent(event, type === "click" || type === "dblclick" ? 450 : 250);
-    });
-  });
-}
-
-function _takStatusIcon(state) {
-  if (state === "sending") {
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4Z"/></svg>`;
-  }
-  if (state === "unconfirmed") {
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v6"/><path d="M17.2 5.8A8 8 0 1 1 6.8 5.8"/><path d="M12 15h.01"/></svg>`;
-  }
-  if (state === "sent") {
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>`;
-  }
-  if (state === "error") {
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5"/><path d="M12 16h.01"/></svg>`;
-  }
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>`;
-}
-
-function _takResendIcon() {
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15.2-6.36L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15.2 6.36L3 16"/></svg>`;
-}
-
-const _MAP_ROLE_INT = {
-  "0": "CLIENT", "1": "CLIENT_MUTE", "2": "ROUTER", "3": "ROUTER_CLIENT",
-  "4": "REPEATER", "5": "TRACKER", "6": "SENSOR", "7": "TAK",
-  "8": "CLIENT_HIDDEN", "9": "LOST_AND_FOUND", "10": "TAK_TRACKER",
-};
+// MeshCore contact types drive the map "type" coloring.
 const _MAP_ROLE_CONFIG = {
-  "CLIENT":         { color: "#4a9eff", label: "Client" },
-  "CLIENT_MUTE":    { color: "#6a7a8a", label: "Client Mute" },
-  "ROUTER":         { color: "#ff9043", label: "Router" },
-  "ROUTER_CLIENT":  { color: "#b06aff", label: "Router Client" },
-  "REPEATER":       { color: "#e8c030", label: "Repeater" },
-  "TRACKER":        { color: "#00d4d4", label: "Tracker" },
-  "SENSOR":         { color: "#26c6a6", label: "Sensor" },
-  "TAK":            { color: "#ff6ab0", label: "TAK" },
-  "CLIENT_HIDDEN":  { color: "#4a5566", label: "Hidden" },
-  "LOST_AND_FOUND": { color: "#ff4444", label: "Lost & Found" },
-  "TAK_TRACKER":    { color: "#ff8a65", label: "TAK Tracker" },
-  "weather":        { color: "#26c6a6", label: "Weather" },
-  "":               { color: "#8a9aaa", label: "Unknown" },
+  "chat":     { color: "#4a9eff", label: "Chat" },
+  "repeater": { color: "#e8c030", label: "Repeater" },
+  "room":     { color: "#b06aff", label: "Room" },
+  "sensor":   { color: "#26c6a6", label: "Sensor" },
+  "weather":  { color: "#26c6a6", label: "Weather" },
+  "":         { color: "#8a9aaa", label: "Unknown" },
 };
 
 function _getNodeRoleKey(node) {
-  const raw = String(node.meshtasticRole || "");
-  if (_MAP_ROLE_INT[raw]) return _MAP_ROLE_INT[raw];
-  const upper = raw.toUpperCase();
-  if (_MAP_ROLE_CONFIG[upper]) return upper;
+  const type = String(node.contactType || "").toLowerCase();
+  if (_MAP_ROLE_CONFIG[type]) return type;
   if (node.role === "weather") return "weather";
   return "";
 }
@@ -3778,7 +3370,6 @@ function openNodesMap() {
         `<button id="mapToggleRadius" class="nodes-map-toggle-btn" title="Estimated radio range">radius</button>` +
         `<button id="mapToggleLinks" class="nodes-map-toggle-btn" title="Connection lines">links</button>` +
         `<button id="mapToggleRole" class="nodes-map-toggle-btn" title="Color by role">role</button>` +
-        `<button id="mapToggleTak" class="nodes-map-toggle-btn" title="TAK / ATAK layers">TAK</button>` +
         `<div id="mapRadiusStyleControl" class="nodes-map-hops-control hidden" title="Radius style">` +
           `<span class="nodes-map-hops-label">style</span>` +
           `<button id="mapRadiusStyleBtn" class="nodes-map-style-btn nodes-map-style-btn--fill" title="Switch radius style"></button>` +
@@ -3826,52 +3417,6 @@ function openNodesMap() {
     nodesMapContainer.appendChild(networkLayersControl);
     L.DomEvent.disableClickPropagation(networkLayersControl);
     L.DomEvent.disableScrollPropagation(networkLayersControl);
-    _takShieldUiElement(networkLayersControl);
-
-    const takPanelControl = L.control({ position: "topleft" });
-    takPanelControl.onAdd = function () {
-      const div = L.DomUtil.create("div", "tak-panel hidden");
-      div.id = "takPanel";
-      div.innerHTML =
-        `<div class="tak-panel-header">` +
-          `<span class="tak-panel-title">TAK Layers</span>` +
-          `<button id="takPanelCloseBtn" class="tak-panel-close" title="Close TAK panel" aria-label="Close TAK panel">` +
-            `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12"/><path d="M18 6 6 18"/></svg>` +
-          `</button>` +
-        `</div>` +
-        `<div class="tak-section">` +
-          `<div class="tak-section-title">` +
-            `<span>Custom Layers</span>` +
-            `<button id="takAddLayerBtn" class="tak-mini-btn" title="Create new layer">+ New</button>` +
-          `</div>` +
-          `<div id="takCustomLayersList" class="tak-custom-layers"></div>` +
-        `</div>` +
-        `<div class="tak-section" id="takDrawSection" style="display:none">` +
-          `<div class="tak-section-title">Draw</div>` +
-          `<div class="tak-draw-toolbar">` +
-            `<button id="takDrawMarker" class="tak-draw-btn" title="Add waypoint">` +
-              `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="5"/></svg> Waypoint` +
-            `</button>` +
-            `<button id="takDrawRuler" class="tak-draw-btn" title="Draw ruler">` +
-              `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 20 20 4"/><path d="M14 4l6 6"/><path d="M6 12l2 2"/><path d="M9 9l2 2"/><path d="M12 6l2 2"/></svg> Ruler` +
-            `</button>` +
-            `<button id="takDrawCircle" class="tak-draw-btn" title="Draw circle">` +
-              `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="8"/></svg> Circle` +
-            `</button>` +
-          `</div>` +
-          `<div id="takDrawHint" class="tak-draw-hint hidden"></div>` +
-          `<div class="tak-draw-actions">` +
-            `<button id="takDrawFinish" class="tak-draw-finish hidden">Finish</button>` +
-            `<button id="takDrawCancel" class="tak-draw-cancel hidden">Cancel</button>` +
-          `</div>` +
-        `</div>` +
-        `<div id="takInlineDialog" class="tak-inline-dialog hidden"></div>`;
-      L.DomEvent.disableClickPropagation(div);
-      L.DomEvent.disableScrollPropagation(div);
-      _takShieldUiElement(div);
-      return div;
-    };
-    takPanelControl.addTo(_mapInstance);
 
     document.getElementById("mapToggleTooltips").addEventListener("click", function () {
       _mapShowTooltips = !_mapShowTooltips;
@@ -3918,29 +3463,16 @@ function openNodesMap() {
       document.getElementById("mapHopsVal").textContent = _mapHoverMaxHops;
       _scheduleSaveMapPrefs();
     });
-    document.getElementById("mapToggleTak").addEventListener("click", function () {
-      if (_mapTakMode) {
-        _takClosePanel();
-        this.classList.remove("nodes-map-toggle-btn--active");
-      } else {
-        _takOpenPanel();
-        this.classList.add("nodes-map-toggle-btn--active");
-      }
-    });
     _mapInstance.on("moveend zoomend", () => {
       _scheduleSaveMapPrefs();
     });
     _syncMapControls();
-    _takRefreshPanel();
-    if (_mapTakMode) {
-      _takOpenPanel();
-    }
+    _renderNetworkLayersPanel();
   }
 
   // Force Leaflet to recalculate size after the modal becomes visible
   requestAnimationFrame(() => {
     _mapInstance.invalidateSize();
-    _takRenderAllIncomingFeatures();
     _syncMapControls();
     _renderMapNodes(!_mapSavedView);
   });
@@ -3955,1029 +3487,54 @@ function closeNodesMap() {
   if (icon) icon.innerHTML = '<path d="M1 1h4v1.5H2.5V4H1V1zm6 0h4v3h-1.5V2.5H7V1zM1 8h1.5v2.5H5V12H1V8zm8.5 2.5H7V12h4V8H9.5v2.5z"/>';
 }
 
-// Р Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљ TAK / ATAK Р Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљ
-
-function _takSetLayerStatus(layerId, state, text = "") {
-  if (!layerId) return;
-  if (_takLayerSendTimers.has(layerId)) {
-    clearTimeout(_takLayerSendTimers.get(layerId));
-    _takLayerSendTimers.delete(layerId);
-  }
-  _takLayerSendState.set(layerId, { state, text });
-  if (_mapTakMode) _takRefreshPanel();
-}
-
-function _takPostFeature(item, color, layerId = _takActiveLayerId) {
-  const feature = _takNormalizeFeature(item, color || "#4a9eff");
-  const body = {
-    type: feature.type,
-    label: feature.label || "",
-    color: feature.color || color || "#4a9eff",
-    fillColor: feature.fillColor || feature.color || color || "#4a9eff",
-    strokeStyle: feature.strokeStyle || "solid",
-    strokeWeight: feature.strokeWeight || 1,
-    remarks: feature.remarks || "",
-    cotType: feature.cotType || "",
-    iconsetPath: feature.iconsetPath || "",
-    markerPreset: feature.markerPreset || "",
-  };
-  if (feature.type === "marker") body.latlng = feature.latlng;
-  else if (feature.type === "ruler") {
-    body.latlng = feature.latlng;
-    body.rangeMeters = feature.rangeMeters;
-    body.bearingDeg = feature.bearingDeg;
-  }
-  else if (feature.type === "circle") {
-    body.latlng = feature.latlng;
-    body.radiusMeters = feature.radiusMeters;
-  } else if (feature.type === "ellipse") {
-    body.latlng = feature.latlng;
-    body.majorMeters = feature.majorMeters;
-    body.minorMeters = feature.minorMeters;
-    body.angleDeg = feature.angleDeg;
-  } else body.latlngs = feature.latlngs;
-  // Generate uid client-side and register BEFORE fetch to avoid race with SSE
-  const uid = String(item?.uid || feature.uid || `tak-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 5)}`);
-  feature.uid = uid;
-  if (item && typeof item === "object") item.uid = uid;
-  body.uid = uid;
-  _takSaveToStorage();
-  const isLargeGeometry =
-    item.type === "circle"
-    || item.type === "ellipse"
-    || ((item.type === "polyline" || item.type === "polygon") && Array.isArray(item.latlngs) && item.latlngs.length > 8);
-  const sendTimer = setTimeout(() => {
-    const pending = _takPendingSends.get(uid);
-    if (pending) {
-      _takPendingSends.delete(uid);
-      _takSetLayerStatus(pending.layerId, "error", "No response from mesh");
-    }
-  }, isLargeGeometry ? 180000 : 90000);
-  _takPendingSends.set(uid, { timer: sendTimer, layerId });
-
-  _takSetLayerStatus(layerId, "sending", isLargeGeometry ? "Mesh transfer in progress..." : "Sending...");
-  fetch("/api/tak/send", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  }).then(r => r.json()).then(data => {
-    if (!data.ok) {
-      const pending = _takPendingSends.get(uid);
-      if (pending) clearTimeout(pending.timer);
-      _takPendingSends.delete(uid);
-      _takSetLayerStatus(layerId, "error", (data.error || "Send failed"));
-    }
-    // If ok=true, wait for SSE tak_send_status (uid already stored)
-  }).catch(() => {
-    const pending = _takPendingSends.get(uid);
-    if (pending) clearTimeout(pending.timer);
-    _takPendingSends.delete(uid);
-    _takSetLayerStatus(layerId, "error", "Not connected");
-  });
-}
-
-function _takApproxEllipseLatLngs(center, majorMeters, minorMeters, angleDeg = 0, segments = 48) {
-  if (!Array.isArray(center) || center.length < 2) return [];
-  const lat = Number(center[0]);
-  const lon = Number(center[1]);
-  const major = Math.max(0, Number(majorMeters) || 0);
-  const minor = Math.max(0, Number(minorMeters) || 0);
-  if (!isFinite(lat) || !isFinite(lon) || major <= 0 || minor <= 0) return [];
-  const angle = (Number(angleDeg) || 0) * Math.PI / 180;
-  const mPerDegLat = 111320;
-  const mPerDegLon = Math.max(1, 111320 * Math.cos(lat * Math.PI / 180));
-  const points = [];
-  for (let i = 0; i < segments; i += 1) {
-    const t = (2 * Math.PI * i) / segments;
-    const x = major * Math.cos(t);
-    const y = minor * Math.sin(t);
-    const xr = x * Math.cos(angle) - y * Math.sin(angle);
-    const yr = x * Math.sin(angle) + y * Math.cos(angle);
-    points.push([lat + (yr / mPerDegLat), lon + (xr / mPerDegLon)]);
-  }
-  return points;
-}
-
-function _takLatLngOffsetMeters(center, eastMeters, northMeters) {
-  if (!Array.isArray(center) || center.length < 2) return null;
-  const lat = Number(center[0]);
-  const lon = Number(center[1]);
-  const mPerDegLat = 111320;
-  const mPerDegLon = Math.max(1, 111320 * Math.cos(lat * Math.PI / 180));
-  return [lat + (northMeters / mPerDegLat), lon + (eastMeters / mPerDegLon)];
-}
-
-function _takDestinationPoint(center, rangeMeters, bearingDeg) {
-  const distance = Number(rangeMeters);
-  const bearing = (Number(bearingDeg) || 0) * Math.PI / 180;
-  if (!Array.isArray(center) || center.length < 2 || !(distance > 0)) return null;
-  const east = distance * Math.sin(bearing);
-  const north = distance * Math.cos(bearing);
-  return _takLatLngOffsetMeters(center, east, north);
-}
-
-function _bearingDegrees(lat1, lon1, lat2, lon2) {
-  const phi1 = Number(lat1) * Math.PI / 180;
-  const phi2 = Number(lat2) * Math.PI / 180;
-  const dLon = (Number(lon2) - Number(lon1)) * Math.PI / 180;
-  const y = Math.sin(dLon) * Math.cos(phi2);
-  const x = Math.cos(phi1) * Math.sin(phi2) - Math.sin(phi1) * Math.cos(phi2) * Math.cos(dLon);
-  const deg = Math.atan2(y, x) * 180 / Math.PI;
-  return (deg + 360) % 360;
-}
+// Р Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљ Network layers Р Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљР Р†РІР‚СњР вЂљ
 
 function _isNodeLayerVisible(node) {
   const statusKey = node?.online ? "online" : "offline";
-  return _takAutoLayerVis[statusKey] !== false;
+  return _mapAutoLayerVis[statusKey] !== false;
 }
 
-function _takRenderAllIncomingFeatures() {
-  if (!_mapInstance || !_mapTakMode) return;
-  _takIncomingFeatures.forEach((feature) => _takRenderIncomingFeature(feature));
-}
 
-function _takRemoveIncomingFeature(uid) {
-  if (!uid) return;
-  _takIncomingFeatures.delete(uid);
-  if (_takIncomingMap.has(uid)) {
-    const layer = _takIncomingMap.get(uid);
-    _takIncomingMap.delete(uid);
-    if (_takIncomingLayer && layer) {
-      try { _takIncomingLayer.removeLayer(layer); } catch (e) {}
-    }
-  }
-}
 
-function _takRemoveLocalFeatureByUid(uid) {
-  if (!uid) return false;
-  let changed = false;
-  _takCustomLayers.forEach((layer) => {
-    const before = Array.isArray(layer.items) ? layer.items.length : 0;
-    layer.items = Array.isArray(layer.items)
-      ? layer.items.filter((item) => String(item?.uid || "") !== uid)
-      : [];
-    if (layer.items.length !== before) {
-      _takRenderLayer(layer);
-      changed = true;
-    }
-  });
-  if (changed) _takSaveToStorage();
-  return changed;
-}
 
-function _takHandleDeleteFeature(feature) {
-  const uid = String(feature?.uid || "");
-  if (!uid) return;
-  _takRemoveIncomingFeature(uid);
-  _takRemoveLocalFeatureByUid(uid);
-}
-
-function _takRenderIncomingFeature(feature) {
-  if (!feature || !feature.uid) return;
-  if (feature.type === "delete") {
-    _takHandleDeleteFeature(feature);
-    return;
-  }
-  const normalizedFeature = _takNormalizeFeature(feature, feature.color || "#ff9043");
-  _takIncomingFeatures.set(normalizedFeature.uid, normalizedFeature);
-  if (!_mapInstance || !_mapTakMode) return;
-  if (!_takIncomingLayer) {
-    _takIncomingLayer = L.layerGroup().addTo(_mapInstance);
-  }
-  // Remove old layer for this uid if exists
-  if (_takIncomingMap.has(normalizedFeature.uid)) {
-    _takIncomingLayer.removeLayer(_takIncomingMap.get(normalizedFeature.uid));
-  }
-  const color = normalizedFeature.color || "#ff9043";
-  const dashArray = _takStrokeStyleToDashArray(normalizedFeature.strokeStyle);
-  const senderHtml = normalizedFeature.sender ? `<div class="nodes-map-popup-row">from: ${_takEscapeHtml(normalizedFeature.sender)}</div>` : "";
-  const metadataOnlyHtml = normalizedFeature.metadataOnly ? `<div class="nodes-map-popup-row">geometry: metadata only</div>` : "";
-  const remarksHtml = normalizedFeature.remarks ? `<div class="nodes-map-popup-row">${_takEscapeHtml(normalizedFeature.remarks)}</div>` : "";
-  const typeHtml = normalizedFeature.rawType ? `<div class="nodes-map-popup-row">type: ${_takEscapeHtml(normalizedFeature.rawType)}</div>` : "";
-  const circleSizeHtml = normalizedFeature.type === "circle" && normalizedFeature.radiusMeters > 0
-    ? `<div class="nodes-map-popup-row">radius: ${_takEscapeHtml(_takFormatDistance(normalizedFeature.radiusMeters))}</div>`
-    : "";
-  let leafletFeature = null;
-  const makeCenterMarker = () => L.circleMarker(normalizedFeature.latlng, { radius: 3, color, weight: 2, fillColor: color, fillOpacity: 1 });
-  const makeLabeledMarker = (title) => {
-    const icon = L.divIcon({
-      className: "",
-      html: _takBuildMarkerHtml(normalizedFeature, title),
-      iconSize: [16, 16], iconAnchor: [8, 8], popupAnchor: [0, -10],
-    });
-    return L.marker(normalizedFeature.latlng, { icon });
-  };
-  const bindPopup = (layer, title) => {
-    if (!layer || (!normalizedFeature.label && !normalizedFeature.sender && !normalizedFeature.metadataOnly && !normalizedFeature.remarks && !normalizedFeature.rawType && !circleSizeHtml)) return;
-    layer.bindPopup(
-      `<div class="nodes-map-popup"><div class="nodes-map-popup-name">${_takEscapeHtml(normalizedFeature.label || title)}</div>${senderHtml}${remarksHtml}${typeHtml}${circleSizeHtml}${metadataOnlyHtml}</div>`,
-      { closeButton: false, autoPan: false },
-    );
-  };
-  if (normalizedFeature.type === "marker" && normalizedFeature.latlng) {
-    leafletFeature = makeLabeledMarker("Waypoint");
-    bindPopup(leafletFeature, "Waypoint");
-  } else if (normalizedFeature.type === "polyline" && normalizedFeature.latlngs?.length >= 2) {
-    leafletFeature = L.polyline(normalizedFeature.latlngs, { color, weight: Math.max(2, normalizedFeature.strokeWeight + 1 || 2.5), opacity: 0.9, dashArray: dashArray || "8 4" });
-    bindPopup(leafletFeature, "Route");
-  } else if (normalizedFeature.type === "polyline" && normalizedFeature.latlng) {
-    leafletFeature = makeLabeledMarker("Route");
-    bindPopup(leafletFeature, "Route");
-  } else if (normalizedFeature.type === "polygon" && normalizedFeature.latlngs?.length >= 3) {
-    leafletFeature = L.polygon(normalizedFeature.latlngs, { color, weight: Math.max(2, normalizedFeature.strokeWeight || 2), opacity: 0.9, fillColor: normalizedFeature.fillColor || color, fillOpacity: 0.1, dashArray: dashArray || "8 4" });
-    bindPopup(leafletFeature, "Area");
-  } else if (normalizedFeature.type === "polygon" && normalizedFeature.latlng) {
-    leafletFeature = makeLabeledMarker("Area");
-    bindPopup(leafletFeature, "Area");
-  } else if (normalizedFeature.type === "circle" && normalizedFeature.latlng && normalizedFeature.radiusMeters > 0) {
-    const circle = L.circle(normalizedFeature.latlng, { radius: normalizedFeature.radiusMeters, color, weight: Math.max(2, normalizedFeature.strokeWeight || 2), opacity: 0.9, fillColor: normalizedFeature.fillColor || color, fillOpacity: 0.1, dashArray: dashArray || "8 4" });
-    const radiusLabel = _takMeasureLabelMarker(normalizedFeature.latlng, `R: ${_takFormatDistance(normalizedFeature.radiusMeters)}`);
-    leafletFeature = L.featureGroup([circle, makeCenterMarker(), radiusLabel].filter(Boolean));
-    bindPopup(leafletFeature, "Circle");
-  } else if (normalizedFeature.type === "ellipse" && normalizedFeature.latlng && normalizedFeature.majorMeters > 0 && normalizedFeature.minorMeters > 0) {
-    const ellipsePoints = _takApproxEllipseLatLngs(normalizedFeature.latlng, normalizedFeature.majorMeters, normalizedFeature.minorMeters, normalizedFeature.angleDeg || 0);
-    if (ellipsePoints.length >= 12) {
-      leafletFeature = L.featureGroup([
-        L.polygon(ellipsePoints, { color, weight: Math.max(2, normalizedFeature.strokeWeight || 2), opacity: 0.9, fillColor: normalizedFeature.fillColor || color, fillOpacity: 0.1, dashArray: dashArray || "8 4" }),
-        makeCenterMarker(),
-      ]);
-      bindPopup(leafletFeature, "Ellipse");
-    }
-  } else if (normalizedFeature.type === "rectangle" && normalizedFeature.latlngs?.length >= 4) {
-    leafletFeature = L.featureGroup([
-      L.polygon(normalizedFeature.latlngs, { color, weight: Math.max(2, normalizedFeature.strokeWeight || 2), opacity: 0.9, fillColor: normalizedFeature.fillColor || color, fillOpacity: 0.1, dashArray: dashArray || "8 4" }),
-      normalizedFeature.latlng ? makeCenterMarker() : L.layerGroup(),
-    ]);
-    bindPopup(leafletFeature, "Rectangle");
-  } else if (normalizedFeature.type === "rectangle" && normalizedFeature.latlng) {
-    leafletFeature = makeLabeledMarker("Rectangle");
-    bindPopup(leafletFeature, "Rectangle");
-  } else if (normalizedFeature.type === "ruler" && normalizedFeature.latlng && normalizedFeature.rangeMeters > 0) {
-    const dest = _takDestinationPoint(normalizedFeature.latlng, normalizedFeature.rangeMeters, normalizedFeature.bearingDeg || 0);
-    if (dest) {
-      const labelPoint = _takMidpoint(normalizedFeature.latlng, dest);
-      const lengthLabel = _takMeasureLabelMarker(labelPoint, _takFormatDistance(normalizedFeature.rangeMeters));
-      leafletFeature = L.featureGroup([
-        L.polyline([normalizedFeature.latlng, dest], { color, weight: Math.max(2, normalizedFeature.strokeWeight + 1 || 2.5), opacity: 0.9, dashArray: dashArray || "6 4" }),
-        makeCenterMarker(),
-        L.circleMarker(dest, { radius: 3, color, weight: 2, fillColor: color, fillOpacity: 1 }),
-        lengthLabel,
-      ].filter(Boolean));
-      bindPopup(leafletFeature, "Ruler");
-    }
-  }
-  if (leafletFeature) {
-    _takIncomingLayer.addLayer(leafletFeature);
-    _takIncomingMap.set(normalizedFeature.uid, leafletFeature);
-  }
-}
-
-function _takLoadFromStorage() {
-  try {
-    const raw = localStorage.getItem("takCustomLayers");
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        _takCustomLayers = parsed.map((layer) => ({
-          ...layer,
-          items: Array.isArray(layer.items)
-            ? layer.items.map((item) => _takNormalizeFeature(item, layer.color || "#4a9eff"))
-            : [],
-        }));
-      }
-    }
-  } catch (e) {}
-}
-
-function _takSaveToStorage() {
-  try {
-    const data = _takCustomLayers.map(l => ({
-      id: l.id, name: l.name, color: l.color, visible: l.visible, items: l.items,
-    }));
-    localStorage.setItem("takCustomLayers", JSON.stringify(data));
-  } catch (e) {}
-}
-
-function _takPrompt(label, placeholder, onOk, onCancel) {
-  const dialog = document.getElementById("takInlineDialog");
-  if (!dialog) { if (onOk) onOk(""); return; }
-  _takBumpIgnoreMapClick(500);
-  dialog.innerHTML =
-    `<div class="tak-dialog-label">${label}</div>` +
-    `<input id="takDialogInput" class="tak-dialog-input" type="text" placeholder="${placeholder}" autocomplete="off">` +
-    `<div class="tak-dialog-actions">` +
-      `<button id="takDialogOk" class="tak-dialog-ok">OK</button>` +
-      `<button id="takDialogCancel" class="tak-dialog-cancel-btn">Cancel</button>` +
-    `</div>`;
-  dialog.classList.remove("hidden");
-  _takShieldUiElement(dialog);
-  const input = document.getElementById("takDialogInput");
-  input.focus();
-  function close() { dialog.classList.add("hidden"); dialog.innerHTML = ""; }
-  document.getElementById("takDialogOk").addEventListener("click", (e) => { _takConsumeUiEvent(e, 500); const v = input.value; close(); if (onOk) onOk(v); });
-  dialog.querySelector(".tak-dialog-cancel-btn").addEventListener("click", (e) => { _takConsumeUiEvent(e, 500); close(); if (onCancel) onCancel(); });
-  input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") { e.preventDefault(); const v = input.value; close(); if (onOk) onOk(v); }
-    if (e.key === "Escape") { e.preventDefault(); close(); if (onCancel) onCancel(); }
-  });
-}
-
-function _takDeleteFeature(item) {
-  if (!item || !item.uid) return Promise.resolve({ ok: true, skipped: true });
-  const feature = _takNormalizeFeature(item, item.color || "#4a9eff");
-  return fetch("/api/tak/delete", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      uid: feature.uid,
-      type: feature.type,
-      rawType: feature.rawType || "",
-      cotType: feature.cotType || "",
-      latlng: feature.latlng || null,
-      radiusMeters: feature.radiusMeters ?? null,
-      rangeMeters: feature.rangeMeters ?? null,
-      bearingDeg: feature.bearingDeg ?? null,
-    }),
-  }).then((r) => r.json()).catch(() => ({ ok: false }));
-}
-
-function _takFeatureTypeLabel(type) {
-  if (type === "marker") return "Waypoint";
-  if (type === "circle") return "Circle";
-  if (type === "ruler") return "Ruler";
-  return "Object";
-}
-
-function _takDeleteLayerItem(layer, item) {
-  if (!layer || !item) return;
-  const doDelete = () => {
-    if (item.uid) _takDeleteFeature(item);
-    layer.items = Array.isArray(layer.items)
-      ? layer.items.filter((entry) => entry !== item && String(entry?.uid || "") !== String(item.uid || ""))
-      : [];
-    _takRenderLayer(layer);
-    _takSaveToStorage();
-    _takRefreshPanel();
-  };
-  _takConfirm(`Delete ${_takFeatureTypeLabel(item.type).toLowerCase()} "${_takEscapeHtml(item.label || _takFeatureTypeLabel(item.type))}"?`, doDelete);
-}
-
-function _takFeatureDialog(type, defaults, onOk, onCancel, options = {}) {
-  const useMapPopover = !!(options.anchorLatLng && _mapInstance);
-  const dialog = useMapPopover ? _takGetMapEditor() : document.getElementById("takInlineDialog");
-  if (!dialog) { if (onOk) onOk(defaults || {}); return; }
-  _takBumpIgnoreMapClick(500);
-  const safeType = String(type || "marker");
-  const stored = _takToolPrefs[safeType] || {};
-  const value = _takNormalizeFeature({ ...stored, ...defaults }, defaults?.color || "#4a9eff");
-  const preset = _takMarkerPresetForCotType(value.cotType || value.rawType || "");
-  const isMarker = safeType === "marker";
-  const isRuler = safeType === "ruler";
-  const isFilledShape = safeType === "circle" || safeType === "ellipse" || safeType === "rectangle";
-  const title = isMarker ? "Waypoint / Marker" : isRuler ? "Ruler" : "Circle";
-  const presetOptions = _TAK_MARKER_PRESETS.map((item) => (
-    `<option value="${item.id}"${item.id === (value.markerPreset || preset.id) ? " selected" : ""}>${item.label}</option>`
-  )).join("");
-
-  dialog.className = useMapPopover ? "tak-map-editor tak-map-editor--compact" : "tak-inline-dialog";
-  dialog.innerHTML =
-    `<div class="tak-dialog-label">TAK ${_takEscapeHtml(title)} properties</div>` +
-    (isMarker ? `<div id="takFeaturePreview" class="tak-feature-preview"></div>` : "") +
-    `<div class="tak-form-grid">` +
-      (isMarker
-        ? `<label class="tak-form-field"><span>Type</span><select id="takFeaturePreset" class="tak-dialog-select">${presetOptions}</select></label>`
-        : "") +
-      `<label class="tak-form-field"><span>Label</span><input id="takFeatureLabel" class="tak-dialog-input" type="text" value="${_takEscapeHtml(value.label || "")}" placeholder="${isMarker ? "WPT" : "Optional"}" autocomplete="off"></label>` +
-      `<label class="tak-form-field"><span>Color</span><input id="takFeatureColor" class="tak-dialog-input tak-dialog-color" type="color" value="${_takEscapeHtml(value.color || "#4a9eff")}"></label>` +
-      (isFilledShape
-        ? `<label class="tak-form-field"><span>Fill</span><input id="takFeatureFillColor" class="tak-dialog-input tak-dialog-color" type="color" value="${_takEscapeHtml(value.fillColor || value.color || "#4a9eff")}"></label>`
-        : "") +
-      `<label class="tak-form-field"><span>Style</span><select id="takFeatureStrokeStyle" class="tak-dialog-select"><option value="solid"${value.strokeStyle === "solid" ? " selected" : ""}>Solid</option><option value="dashed"${value.strokeStyle === "dashed" ? " selected" : ""}>Dashed</option><option value="dotted"${value.strokeStyle === "dotted" ? " selected" : ""}>Dotted</option></select></label>` +
-      `<label class="tak-form-field"><span>Width</span><input id="takFeatureStrokeWeight" class="tak-dialog-input" type="number" min="1" max="8" step="0.5" value="${_takEscapeHtml(String(value.strokeWeight || 1))}"></label>` +
-      (!useMapPopover && isMarker
-        ? `<label class="tak-form-field tak-form-field--wide"><span>Iconset Path</span><input id="takFeatureIconsetPath" class="tak-dialog-input" type="text" value="${_takEscapeHtml(value.iconsetPath || "")}" placeholder="optional ATAK iconset path"></label>`
-          + `<label class="tak-form-field tak-form-field--wide"><span>CoT Type</span><input id="takFeatureCotType" class="tak-dialog-input" type="text" value="${_takEscapeHtml(value.cotType || preset.cotType || "b-m-p-w")}" placeholder="b-m-p-w"></label>`
-        : `<input id="takFeatureCotType" type="hidden" value="${_takEscapeHtml(value.cotType || preset.cotType || "b-m-p-w")}"><input id="takFeatureIconsetPath" type="hidden" value="${_takEscapeHtml(value.iconsetPath || "")}">`) +
-      `<label class="tak-form-field tak-form-field--wide"><span>Remarks</span><textarea id="takFeatureRemarks" class="tak-dialog-textarea" rows="3" placeholder="optional metadata / notes">${_takEscapeHtml(value.remarks || "")}</textarea></label>` +
-    `</div>` +
-    `<div class="tak-dialog-actions">` +
-      `<button id="takDialogOk" class="tak-dialog-ok">Save</button>` +
-      `<button id="takDialogCancel" class="tak-dialog-cancel-btn">Cancel</button>` +
-    `</div>`;
-  dialog.classList.remove("hidden");
-  if (useMapPopover) {
-    const point = _mapInstance.latLngToContainerPoint(options.anchorLatLng);
-    const host = _mapInstance.getContainer();
-    const placeDialog = () => {
-      const width = dialog.offsetWidth || 246;
-      const height = dialog.offsetHeight || 200;
-      const left = Math.max(8, Math.min(host.clientWidth - width - 8, point.x + 14));
-      const top = Math.max(8, Math.min(host.clientHeight - height - 8, point.y - 18));
-      dialog.style.left = `${left}px`;
-      dialog.style.top = `${top}px`;
-    };
-    placeDialog();
-    requestAnimationFrame(placeDialog);
-  } else {
-    dialog.style.left = "";
-    dialog.style.top = "";
-  }
-  _takShieldUiElement(dialog);
-
-  const labelInput = document.getElementById("takFeatureLabel");
-  const presetInput = document.getElementById("takFeaturePreset");
-  const colorInput = document.getElementById("takFeatureColor");
-  const cotTypeInput = document.getElementById("takFeatureCotType");
-  const preview = document.getElementById("takFeaturePreview");
-  if (labelInput) labelInput.focus();
-
-  const syncPreview = () => {
-    const previewFeature = _takNormalizeFeature({
-      ...defaults,
-      type: safeType,
-      label: labelInput?.value?.trim() || value.label || "Waypoint",
-      color: colorInput?.value || value.color || "#4a9eff",
-      fillColor: document.getElementById("takFeatureFillColor")?.value || value.fillColor || value.color || "#4a9eff",
-      strokeStyle: document.getElementById("takFeatureStrokeStyle")?.value || value.strokeStyle || "solid",
-      strokeWeight: Number(document.getElementById("takFeatureStrokeWeight")?.value || value.strokeWeight || 1),
-      cotType: cotTypeInput?.value?.trim() || value.cotType || preset.cotType,
-      markerPreset: presetInput?.value || value.markerPreset || preset.id,
-      markerSymbol: _takMarkerPresetById(presetInput?.value || value.markerPreset || preset.id).symbol,
-    }, value.color || "#4a9eff");
-    if (preview) {
-      preview.innerHTML = `<span class="tak-feature-preview-title">Preview</span>${_takBuildMarkerHtml(previewFeature, "Waypoint")}`;
-    }
-    if (useMapPopover && (safeType === "marker" || safeType === "circle" || safeType === "ruler")) {
-      _takRenderEditorPreview(previewFeature);
-    }
-  };
-
-  if (presetInput && colorInput && cotTypeInput) {
-    const syncPreset = () => {
-      const selectedPreset = _takMarkerPresetById(presetInput.value);
-      if (cotTypeInput.dataset.manual !== "1") cotTypeInput.value = selectedPreset.cotType;
-      if (colorInput.dataset.manual !== "1") colorInput.value = selectedPreset.color;
-      syncPreview();
-    };
-    presetInput.addEventListener("change", syncPreset);
-    colorInput.addEventListener("input", () => { colorInput.dataset.manual = "1"; syncPreview(); });
-    cotTypeInput.addEventListener("input", () => { cotTypeInput.dataset.manual = "1"; syncPreview(); });
-  }
-  if (labelInput) labelInput.addEventListener("input", syncPreview);
-  const fillInput = document.getElementById("takFeatureFillColor");
-  const styleInput = document.getElementById("takFeatureStrokeStyle");
-  const weightInput = document.getElementById("takFeatureStrokeWeight");
-  if (fillInput) fillInput.addEventListener("input", syncPreview);
-  if (styleInput) styleInput.addEventListener("change", syncPreview);
-  if (weightInput) weightInput.addEventListener("input", syncPreview);
-  syncPreview();
-
-  function close() {
-    dialog.classList.add("hidden");
-    if (useMapPopover) _takClearEditorPreview();
-    dialog.innerHTML = "";
-  }
-
-  document.getElementById("takDialogOk").addEventListener("click", (e) => {
-    _takConsumeUiEvent(e, 500);
-    const result = _takNormalizeFeature({
-      ...defaults,
-      label: document.getElementById("takFeatureLabel")?.value?.trim() || defaults?.label || "",
-      color: document.getElementById("takFeatureColor")?.value || defaults?.color || "#4a9eff",
-      fillColor: document.getElementById("takFeatureFillColor")?.value || document.getElementById("takFeatureColor")?.value || defaults?.fillColor || defaults?.color || "#4a9eff",
-      strokeStyle: document.getElementById("takFeatureStrokeStyle")?.value || defaults?.strokeStyle || "solid",
-      strokeWeight: Number(document.getElementById("takFeatureStrokeWeight")?.value || defaults?.strokeWeight || 1),
-      remarks: document.getElementById("takFeatureRemarks")?.value?.trim() || "",
-      markerPreset: document.getElementById("takFeaturePreset")?.value || defaults?.markerPreset || preset.id,
-      markerSymbol: _takMarkerPresetById(document.getElementById("takFeaturePreset")?.value || defaults?.markerPreset || preset.id).symbol,
-      cotType: document.getElementById("takFeatureCotType")?.value?.trim() || defaults?.cotType || preset.cotType,
-      iconsetPath: document.getElementById("takFeatureIconsetPath")?.value?.trim() || "",
-    }, defaults?.color || "#4a9eff");
-    _takToolPrefs[safeType] = {
-      label: result.label || "",
-      color: result.color || "#4a9eff",
-      fillColor: result.fillColor || result.color || "#4a9eff",
-      strokeStyle: result.strokeStyle || "solid",
-      strokeWeight: result.strokeWeight || 1,
-      remarks: result.remarks || "",
-      markerPreset: result.markerPreset || preset.id,
-      cotType: result.cotType || preset.cotType,
-      iconsetPath: result.iconsetPath || "",
-    };
-    _takSaveToolPrefs();
-    close();
-    if (onOk) onOk(result);
-  });
-  document.getElementById("takDialogCancel").addEventListener("click", (e) => {
-    _takConsumeUiEvent(e, 500);
-    close();
-    if (onCancel) onCancel();
-  });
-}
-
-function _takConfirm(message, onOk, onCancel) {
-  const dialog = document.getElementById("takInlineDialog");
-  if (!dialog) { if (onOk) onOk(); return; }
-  _takBumpIgnoreMapClick(500);
-  dialog.innerHTML =
-    `<div class="tak-dialog-label">${message}</div>` +
-    `<div class="tak-dialog-actions">` +
-      `<button id="takDialogOk" class="tak-dialog-ok tak-dialog-ok--danger">Delete</button>` +
-      `<button class="tak-dialog-cancel-btn">Cancel</button>` +
-    `</div>`;
-  dialog.classList.remove("hidden");
-  _takShieldUiElement(dialog);
-  function close() { dialog.classList.add("hidden"); dialog.innerHTML = ""; }
-  document.getElementById("takDialogOk").addEventListener("click", (e) => { _takConsumeUiEvent(e, 500); close(); if (onOk) onOk(); });
-  dialog.querySelector(".tak-dialog-cancel-btn").addEventListener("click", (e) => { _takConsumeUiEvent(e, 500); close(); if (onCancel) onCancel(); });
-}
-
-function _takResendLayer(layer) {
-  if (!layer || !Array.isArray(layer.items) || layer.items.length === 0) return;
-  const supportedItems = layer.items.filter((item) => ["marker", "circle", "ruler"].includes(item?.type));
-  if (supportedItems.length === 0) {
-    _takSetLayerStatus(layer.id, "error", "Layer has no supported TAK items");
-    return;
-  }
-  _takSetLayerStatus(layer.id, "sending", "Resending...");
-  supportedItems.forEach((item, index) => {
-    setTimeout(() => {
-      _takPostFeature(item, item?.color || layer.color, layer.id);
-    }, index * 220);
-  });
-}
-
-function _takOpenPanel() {
-  _mapTakMode = true;
-  _takLoadFromStorage();
-  _takLoadToolPrefs();
-  const panel = document.getElementById("takPanel");
-  if (panel) panel.classList.remove("hidden");
-  const closeBtn = document.getElementById("takPanelCloseBtn");
-  if (closeBtn && !closeBtn.dataset.bound) {
-    closeBtn.dataset.bound = "1";
-    closeBtn.addEventListener("click", (e) => {
-      _takConsumeUiEvent(e, 350);
-      _takClosePanel();
-      const toggleBtn = document.getElementById("mapToggleTak");
-      if (toggleBtn) toggleBtn.classList.remove("nodes-map-toggle-btn--active");
-    });
-  }
-  _takRenderAllCustomLayers();
-  _takRenderAllIncomingFeatures();
-  _takRefreshPanel();
-  _syncMapControls();
-  _scheduleSaveMapPrefs();
-  _renderMapNodes(false);
-}
-
-function _takClosePanel() {
-  _mapTakMode = false;
-  _takSetDrawMode(null);
-  _takClearEditorPreview();
-  const panel = document.getElementById("takPanel");
-  if (panel) panel.classList.add("hidden");
-  Object.values(_takFeatureLayers).forEach(g => { try { g.remove(); } catch (e) {} });
-  _takFeatureLayers = {};
-  if (_takIncomingLayer) {
-    try { _takIncomingLayer.remove(); } catch (e) {}
-    _takIncomingLayer = null;
-  }
-  _takIncomingMap.clear();
-  _takCustomLayers = [];
-  _takActiveLayerId = null;
-  _syncMapControls();
-  _scheduleSaveMapPrefs();
-  _renderMapNodes(false);
-}
-
-function _takRefreshPanel() {
-  // Auto-layers
+function _renderNetworkLayersPanel() {
   const autoEl = document.getElementById("mapNetworkLayers");
-  if (autoEl) {
-    autoEl.innerHTML = "";
-    if (mapNodeOnlineWindowControl) {
-      const windowRow = document.createElement("div");
-      windowRow.className = "tak-layer-row nodes-map-network-layer-row nodes-map-network-window-row";
-      windowRow.appendChild(mapNodeOnlineWindowControl);
-      autoEl.appendChild(windowRow);
-    }
-    const autoLayers = [
-      { key: "online",  label: "Online Nodes",  color: "#4caf50" },
-      { key: "offline", label: "Offline Nodes", color: "#8b4a4a" },
-    ];
-    autoLayers.forEach(al => {
-      const vis = _takAutoLayerVis[al.key] !== false;
-      const row = document.createElement("div");
-      row.className = "tak-layer-row nodes-map-network-layer-row";
-      row.innerHTML =
-        `<div class="tak-layer-color" style="background:${al.color}"></div>` +
-        `<span class="tak-layer-name${vis ? "" : " tak-layer-hidden"}">${al.label}</span>` +
-        `<button class="tak-layer-vis" title="${vis ? "Hide" : "Show"}">${_takEyeIcon(vis)}</button>`;
-      row.querySelector(".tak-layer-vis").addEventListener("click", (e) => {
-        _takConsumeUiEvent(e);
-        _takAutoLayerVis[al.key] = !vis;
-        _scheduleSaveMapPrefs();
-        _renderMapNodes(false);
-        _takRefreshPanel();
-      });
-      autoEl.appendChild(row);
-    });
+  if (!autoEl) return;
+  autoEl.innerHTML = "";
+  if (mapNodeOnlineWindowControl) {
+    const windowRow = document.createElement("div");
+    windowRow.className = "nodes-map-network-layer-row nodes-map-network-window-row";
+    windowRow.appendChild(mapNodeOnlineWindowControl);
+    autoEl.appendChild(windowRow);
   }
-
-  // Custom layers
-  const customEl = document.getElementById("takCustomLayersList");
-  if (customEl) {
-    customEl.innerHTML = "";
-    if (_takCustomLayers.length === 0) {
-      customEl.innerHTML = '<div class="tak-empty-hint">No layers yet</div>';
-    } else {
-      _takCustomLayers.forEach(layer => {
-        const isActive = layer.id === _takActiveLayerId;
-        const sendState = _takLayerSendState.get(layer.id) || { state: "idle", text: "" };
-        const row = document.createElement("div");
-        row.className = "tak-layer-row" + (isActive ? " tak-layer-active" : "");
-        row.title = isActive ? "Active layer for drawing" : "Click to select for drawing";
-        row.innerHTML =
-          `<div class="tak-layer-color" style="background:${layer.color};border-radius:50%"></div>` +
-          `<span class="tak-layer-name${layer.visible ? "" : " tak-layer-hidden"}">${layer.name}</span>` +
-          `<button class="tak-layer-status tak-layer-status--${sendState.state}" title="${sendState.text || "No recent send status"}">${_takStatusIcon(sendState.state)}</button>` +
-          `<button class="tak-layer-resend" title="Resend layer">${_takResendIcon()}</button>` +
-          `<button class="tak-layer-vis" title="${layer.visible ? "Hide" : "Show"}">${_takEyeIcon(layer.visible)}</button>` +
-          `<button class="tak-layer-delete" title="Delete layer">&times;</button>`;
-
-        row.addEventListener("click", (e) => {
-          _takConsumeUiEvent(e);
-          _takActiveLayerId = isActive ? null : layer.id;
-          if (_takDrawMode) _takSetDrawMode(null);
-          _takRefreshPanel();
-        });
-        row.querySelector(".tak-layer-vis").addEventListener("click", (e) => {
-          _takConsumeUiEvent(e);
-          layer.visible = !layer.visible;
-          const grp = _takFeatureLayers[layer.id];
-          if (grp) { if (layer.visible) grp.addTo(_mapInstance); else grp.remove(); }
-          _takSaveToStorage();
-          _takRefreshPanel();
-        });
-        row.querySelector(".tak-layer-status").addEventListener("click", (e) => {
-          _takConsumeUiEvent(e);
-        });
-        row.querySelector(".tak-layer-resend").addEventListener("click", (e) => {
-          _takConsumeUiEvent(e, 500);
-          _takResendLayer(layer);
-        });
-        row.querySelector(".tak-layer-delete").addEventListener("click", (e) => {
-          _takConsumeUiEvent(e);
-          const itemsToDelete = Array.isArray(layer.items)
-            ? layer.items.filter((item) => ["marker", "circle", "ruler"].includes(item?.type) && item?.uid)
-            : [];
-          itemsToDelete.forEach((item, index) => {
-            setTimeout(() => { _takDeleteFeature(item); }, index * 120);
-          });
-          const grp = _takFeatureLayers[layer.id];
-          if (grp) { try { grp.remove(); } catch(e2) {} }
-          delete _takFeatureLayers[layer.id];
-          _takCustomLayers = _takCustomLayers.filter(l => l.id !== layer.id);
-          if (_takActiveLayerId === layer.id) {
-            _takActiveLayerId = null;
-            if (_takDrawMode) _takSetDrawMode(null);
-          }
-          _takSaveToStorage();
-          _takRefreshPanel();
-        });
-        customEl.appendChild(row);
-        if (isActive && Array.isArray(layer.items) && layer.items.length > 0) {
-          const itemsWrap = document.createElement("div");
-          itemsWrap.className = "tak-item-list";
-          layer.items.forEach((item) => {
-            const normalized = _takNormalizeFeature(item, layer.color);
-            if (!["marker", "circle", "ruler"].includes(normalized?.type)) return;
-            const itemRow = document.createElement("div");
-            itemRow.className = "tak-item-row";
-            itemRow.innerHTML =
-              `<span class="tak-item-type">${_takEscapeHtml(_takFeatureTypeLabel(normalized.type))}</span>` +
-              `<span class="tak-item-name">${_takEscapeHtml(normalized.label || _takFeatureTypeLabel(normalized.type))}</span>` +
-              `<button class="tak-item-delete" title="Delete object" aria-label="Delete object">` +
-                `<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12"/><path d="M18 6 6 18"/></svg>` +
-              `</button>`;
-            itemRow.addEventListener("click", (e) => { _takConsumeUiEvent(e, 500); });
-            itemRow.querySelector(".tak-item-delete").addEventListener("click", (e) => {
-              _takConsumeUiEvent(e, 500);
-              _takDeleteLayerItem(layer, item);
-            });
-            itemsWrap.appendChild(itemRow);
-          });
-          if (itemsWrap.childNodes.length > 0) customEl.appendChild(itemsWrap);
-        }
-      });
-    }
-  }
-
-  // Add-layer button listener (re-bind each refresh to avoid duplicates via cloning)
-  const addBtn = document.getElementById("takAddLayerBtn");
-  if (addBtn) {
-    const newBtn = addBtn.cloneNode(true);
-    addBtn.parentNode.replaceChild(newBtn, addBtn);
-    newBtn.addEventListener("click", (e) => {
-      _takConsumeUiEvent(e, 500);
-      _takPrompt("Layer name", "e.g. My Patrol Route", (name) => {
-        if (!name || !name.trim()) return;
-        const palette = ["#4a9eff","#ff9043","#4caf50","#ffc107","#b06aff","#ff6ab0","#00d4d4","#ff5555"];
-        const color = palette[_takCustomLayers.length % palette.length];
-        const layer = { id: Date.now().toString(), name: name.trim(), color, visible: true, items: [] };
-        _takCustomLayers.push(layer);
-        _takFeatureLayers[layer.id] = L.layerGroup().addTo(_mapInstance);
-        _takActiveLayerId = layer.id;
-        _takSaveToStorage();
-        _takRefreshPanel();
-      });
+  const autoLayers = [
+    { key: "online",  label: "Online Nodes",  color: "#4caf50" },
+    { key: "offline", label: "Offline Nodes", color: "#8b4a4a" },
+  ];
+  autoLayers.forEach(al => {
+    const vis = _mapAutoLayerVis[al.key] !== false;
+    const row = document.createElement("div");
+    row.className = "nodes-map-network-layer-row";
+    row.innerHTML =
+      `<div class="nodes-map-layer-color" style="background:${al.color}"></div>` +
+      `<span class="nodes-map-layer-name${vis ? "" : " nodes-map-layer-name--hidden"}">${al.label}</span>` +
+      `<button class="nodes-map-layer-vis" title="${vis ? "Hide" : "Show"}">${_mapEyeIcon(vis)}</button>`;
+    row.querySelector(".nodes-map-layer-vis").addEventListener("click", (e) => {
+      if (e && typeof e.stopPropagation === "function") e.stopPropagation();
+      _mapAutoLayerVis[al.key] = !vis;
+      _scheduleSaveMapPrefs();
+      _renderMapNodes(false);
+      _renderNetworkLayersPanel();
     });
-  }
-
-  // Draw section visibility
-  const drawSection = document.getElementById("takDrawSection");
-  if (drawSection) drawSection.style.display = _takActiveLayerId ? "" : "none";
-
-  // Draw button re-binding
-  const drawBtns = { takDrawMarker: "marker", takDrawRuler: "ruler", takDrawCircle: "circle" };
-  Object.entries(drawBtns).forEach(([id, mode]) => {
-    const btn = document.getElementById(id);
-    if (!btn) return;
-    btn.classList.toggle("tak-draw-btn--active", _takDrawMode === mode);
-    const newBtn = btn.cloneNode(true);
-    btn.parentNode.replaceChild(newBtn, btn);
-    newBtn.classList.toggle("tak-draw-btn--active", _takDrawMode === mode);
-    newBtn.addEventListener("click", (e) => {
-      _takConsumeUiEvent(e, 500);
-      _takSetDrawMode(_takDrawMode === mode ? null : mode);
-    });
+    autoEl.appendChild(row);
   });
-
-  // Cancel button
-  const cancelBtn = document.getElementById("takDrawCancel");
-  if (cancelBtn) {
-    cancelBtn.classList.toggle("hidden", !_takDrawMode);
-    const newCancel = cancelBtn.cloneNode(true);
-    cancelBtn.parentNode.replaceChild(newCancel, cancelBtn);
-    newCancel.classList.toggle("hidden", !_takDrawMode);
-    newCancel.addEventListener("click", (e) => { _takConsumeUiEvent(e, 500); _takSetDrawMode(null); });
-  }
-
-  // Finish button unused: supported outbound tools complete with clicks
-  const finishBtn = document.getElementById("takDrawFinish");
-  if (finishBtn) {
-    const newFinish = finishBtn.cloneNode(true);
-    finishBtn.parentNode.replaceChild(newFinish, finishBtn);
-    newFinish.classList.add("hidden");
-    newFinish.disabled = true;
-  }
 }
 
-function _takEyeIcon(visible) {
+function _mapEyeIcon(visible) {
   if (visible) {
     return `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`;
   }
   return `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`;
-}
-
-function _takRenderAllCustomLayers() {
-  Object.values(_takFeatureLayers).forEach(g => { try { g.remove(); } catch(e) {} });
-  _takFeatureLayers = {};
-  _takCustomLayers.forEach(layer => _takRenderLayer(layer));
-}
-
-function _takRenderLayer(layer) {
-  if (_takFeatureLayers[layer.id]) {
-    try { _takFeatureLayers[layer.id].remove(); } catch(e) {}
-  }
-  const group = L.layerGroup();
-  layer.items.forEach(item => {
-    const featureItem = _takNormalizeFeature(item, layer.color);
-    const itemColor = featureItem.color || layer.color;
-    const dashArray = _takStrokeStyleToDashArray(featureItem.strokeStyle);
-    const weight = featureItem.strokeWeight || 1;
-    let feature = null;
-    if (featureItem.type === "marker") {
-      const icon = L.divIcon({
-        className: "",
-        html: _takBuildMarkerHtml(featureItem, "Waypoint"),
-        iconSize: [16, 16],
-        iconAnchor: [8, 8],
-        popupAnchor: [0, -10],
-      });
-      feature = L.marker(featureItem.latlng, { icon });
-      if (featureItem.label || featureItem.remarks) feature.bindPopup(`<div class="nodes-map-popup"><div class="nodes-map-popup-name">${featureItem.label || "Waypoint"}</div>${featureItem.remarks ? `<div class="nodes-map-popup-row">${_takEscapeHtml(featureItem.remarks)}</div>` : ""}</div>`, { closeButton: false, autoPan: false });
-    } else if (featureItem.type === "polyline") {
-      feature = L.polyline(featureItem.latlngs, { color: itemColor, weight: Math.max(2, weight + 1), opacity: 0.85, dashArray });
-      if (featureItem.label || featureItem.remarks) feature.bindPopup(`<div class="nodes-map-popup"><div class="nodes-map-popup-name">${featureItem.label || "Route"}</div>${featureItem.remarks ? `<div class="nodes-map-popup-row">${_takEscapeHtml(featureItem.remarks)}</div>` : ""}</div>`, { closeButton: false, autoPan: false });
-    } else if (featureItem.type === "polygon") {
-      feature = L.polygon(featureItem.latlngs, { color: itemColor, weight: Math.max(2, weight), opacity: 0.85, fillColor: featureItem.fillColor || itemColor, fillOpacity: 0.12, dashArray });
-      if (featureItem.label || featureItem.remarks) feature.bindPopup(`<div class="nodes-map-popup"><div class="nodes-map-popup-name">${featureItem.label || "Area"}</div>${featureItem.remarks ? `<div class="nodes-map-popup-row">${_takEscapeHtml(featureItem.remarks)}</div>` : ""}</div>`, { closeButton: false, autoPan: false });
-    } else if (featureItem.type === "circle" && featureItem.latlng && featureItem.radiusMeters > 0) {
-      const radiusLabel = _takMeasureLabelMarker(featureItem.latlng, `R: ${_takFormatDistance(featureItem.radiusMeters)}`);
-      feature = L.featureGroup([
-        L.circle(featureItem.latlng, { radius: featureItem.radiusMeters, color: itemColor, weight: Math.max(2, weight), opacity: 0.85, fillColor: featureItem.fillColor || itemColor, fillOpacity: 0.12, dashArray }),
-        L.circleMarker(featureItem.latlng, { radius: 3, color: itemColor, weight: 2, fillColor: itemColor, fillOpacity: 1 }),
-        radiusLabel,
-      ].filter(Boolean));
-      if (featureItem.label || featureItem.remarks || featureItem.radiusMeters > 0) feature.bindPopup(`<div class="nodes-map-popup"><div class="nodes-map-popup-name">${featureItem.label || "Circle"}</div><div class="nodes-map-popup-row">radius: ${_takEscapeHtml(_takFormatDistance(featureItem.radiusMeters))}</div>${featureItem.remarks ? `<div class="nodes-map-popup-row">${_takEscapeHtml(featureItem.remarks)}</div>` : ""}</div>`, { closeButton: false, autoPan: false });
-    } else if (featureItem.type === "ruler" && featureItem.latlng && featureItem.rangeMeters > 0) {
-      const dest = _takDestinationPoint(featureItem.latlng, featureItem.rangeMeters, featureItem.bearingDeg || 0);
-      if (dest) {
-        const labelPoint = _takMidpoint(featureItem.latlng, dest);
-        const lengthLabel = _takMeasureLabelMarker(labelPoint, _takFormatDistance(featureItem.rangeMeters));
-        feature = L.featureGroup([
-          L.polyline([featureItem.latlng, dest], { color: itemColor, weight: Math.max(2, weight + 1), opacity: 0.85, dashArray: dashArray || "6 4" }),
-          L.circleMarker(featureItem.latlng, { radius: 3, color: itemColor, weight: 2, fillColor: itemColor, fillOpacity: 1 }),
-          L.circleMarker(dest, { radius: 3, color: itemColor, weight: 2, fillColor: itemColor, fillOpacity: 1 }),
-          lengthLabel,
-        ].filter(Boolean));
-        feature.bindPopup(`<div class="nodes-map-popup"><div class="nodes-map-popup-name">${featureItem.label || "Ruler"}</div><div class="nodes-map-popup-row">distance: ${_takEscapeHtml(_takFormatDistance(featureItem.rangeMeters))}</div>${featureItem.remarks ? `<div class="nodes-map-popup-row">${_takEscapeHtml(featureItem.remarks)}</div>` : ""}</div>`, { closeButton: false, autoPan: false });
-      }
-    } else if (featureItem.type === "ellipse" && featureItem.latlng && featureItem.majorMeters > 0 && featureItem.minorMeters > 0) {
-      const ellipsePoints = _takApproxEllipseLatLngs(featureItem.latlng, featureItem.majorMeters, featureItem.minorMeters, featureItem.angleDeg || 0);
-      if (ellipsePoints.length >= 12) {
-        feature = L.featureGroup([
-          L.polygon(ellipsePoints, { color: itemColor, weight: Math.max(2, weight), opacity: 0.85, fillColor: featureItem.fillColor || itemColor, fillOpacity: 0.12, dashArray }),
-          L.circleMarker(featureItem.latlng, { radius: 3, color: itemColor, weight: 2, fillColor: itemColor, fillOpacity: 1 }),
-        ]);
-        if (featureItem.label || featureItem.remarks) feature.bindPopup(`<div class="nodes-map-popup"><div class="nodes-map-popup-name">${featureItem.label || "Ellipse"}</div>${featureItem.remarks ? `<div class="nodes-map-popup-row">${_takEscapeHtml(featureItem.remarks)}</div>` : ""}</div>`, { closeButton: false, autoPan: false });
-      }
-    }
-    if (feature) group.addLayer(feature);
-  });
-  _takFeatureLayers[layer.id] = group;
-  if (layer.visible) group.addTo(_mapInstance);
-}
-
-function _takSetDrawMode(mode) {
-  _takBumpIgnoreMapClick(500);
-  if (_takDrawTempLayer) { try { _takDrawTempLayer.remove(); } catch(e) {} _takDrawTempLayer = null; }
-  if (!mode) _takClearEditorPreview();
-  _takDrawPoints = [];
-  _takDrawMode = mode;
-
-  const container = document.getElementById("nodesMapContainer");
-  _mapInstance.off("click", _takOnMapClick);
-  _mapInstance.off("dblclick", _takOnMapDblClick);
-  _mapInstance.off("mousemove", _takOnMapMouseMove);
-  if (mode === null) {
-    if (container) container.classList.remove("tak-drawing");
-    _mapInstance.doubleClickZoom.enable();
-  } else {
-    if (container) container.classList.add("tak-drawing");
-    _mapInstance.doubleClickZoom.disable();
-    _mapInstance.on("click", _takOnMapClick);
-    _mapInstance.on("dblclick", _takOnMapDblClick);
-    if (mode !== "marker") _mapInstance.on("mousemove", _takOnMapMouseMove);
-    else _mapInstance.off("mousemove", _takOnMapMouseMove);
-  }
-
-  const hint = document.getElementById("takDrawHint");
-  if (hint) {
-    if (!mode) { hint.textContent = ""; hint.classList.add("hidden"); }
-    else {
-      hint.classList.remove("hidden");
-      if (mode === "marker") hint.textContent = "Click on map to place waypoint";
-      else if (mode === "ruler") hint.textContent = "Click start, then click end point.";
-      else hint.textContent = "Click center, then click radius.";
-    }
-  }
-  _takRefreshPanel();
-}
-
-function _takOnMapClick(e) {
-  if (Date.now() < _takIgnoreMapClicksUntil) return;
-  if (!_takDrawMode || !_takActiveLayerId) return;
-  const latlng = [e.latlng.lat, e.latlng.lng];
-
-  if (_takDrawMode === "marker") {
-    const layer = _takCustomLayers.find(l => l.id === _takActiveLayerId);
-    if (!layer) return;
-    const n = layer.items.filter(i => i.type === "marker").length + 1;
-    const item = _takNormalizeFeature({ type: "marker", latlng, label: `WPT ${n}`, color: layer.color }, layer.color);
-    _takFeatureDialog("marker", item, (result) => {
-      layer.items.push(result);
-      _takRenderLayer(layer);
-      _takSaveToStorage();
-      _takPostFeature(result, result.color || layer.color, layer.id);
-      const hint = document.getElementById("takDrawHint");
-      if (hint) hint.textContent = "Waypoint placed. Click map for next, or Cancel.";
-    }, null, { anchorLatLng: e.latlng });
-    return;
-  }
-  if (_takDrawMode === "circle") {
-    if (_takDrawPoints.length === 0) {
-      _takDrawPoints.push(latlng);
-      _takUpdateTempDraw();
-      _takRefreshDrawHint();
-      _takRefreshPanel();
-      return;
-    }
-    const layer = _takCustomLayers.find(l => l.id === _takActiveLayerId);
-    if (!layer) return;
-    const center = _takDrawPoints[0];
-    const radiusMeters = _haversineDistance(center[0], center[1], latlng[0], latlng[1]);
-    if (!(radiusMeters > 0)) return;
-    const item = _takNormalizeFeature({ type: "circle", latlng: center, radiusMeters, label: "Circle", color: layer.color, fillColor: layer.color }, layer.color);
-    _takSetDrawMode(null);
-    _takFeatureDialog("circle", item, (result) => {
-      layer.items.push(result);
-      _takRenderLayer(layer);
-      _takSaveToStorage();
-      _takPostFeature(result, result.color || layer.color, layer.id);
-      _takClearEditorPreview();
-    }, () => {
-      _takClearEditorPreview();
-    }, { anchorLatLng: { lat: center[0], lng: center[1] } });
-    return;
-  }
-  if (_takDrawMode === "ruler") {
-    if (_takDrawPoints.length === 0) {
-      _takDrawPoints.push(latlng);
-      _takUpdateTempDraw();
-      _takRefreshDrawHint();
-      _takRefreshPanel();
-      return;
-    }
-    const layer = _takCustomLayers.find(l => l.id === _takActiveLayerId);
-    if (!layer) return;
-    const start = _takDrawPoints[0];
-    const rangeMeters = _haversineDistance(start[0], start[1], latlng[0], latlng[1]);
-    if (!(rangeMeters > 0)) return;
-    const bearingDeg = _bearingDegrees(start[0], start[1], latlng[0], latlng[1]);
-    const item = _takNormalizeFeature({
-      type: "ruler",
-      latlng: start,
-      rangeMeters,
-      bearingDeg,
-      label: "Ruler",
-      color: layer.color,
-    }, layer.color);
-    _takSetDrawMode(null);
-    _takFeatureDialog("ruler", item, (result) => {
-      layer.items.push(result);
-      _takRenderLayer(layer);
-      _takSaveToStorage();
-      _takPostFeature(result, result.color || layer.color, layer.id);
-      _takClearEditorPreview();
-    }, () => {
-      _takClearEditorPreview();
-    }, { anchorLatLng: { lat: start[0], lng: start[1] } });
-  }
-}
-
-function _takFinishPolyDraw() {
-  return;
-}
-
-function _takOnMapDblClick(e) {
-  return;
-}
-
-function _takRefreshDrawHint() {
-  const hint = document.getElementById("takDrawHint");
-  if (!hint || !_takDrawMode || _takDrawMode === "marker") return;
-  const n = _takDrawPoints.length;
-  if (_takDrawMode === "ruler") {
-    hint.textContent = n < 1
-      ? "Click start."
-      : "Move cursor to set end point, then click.";
-  } else if (_takDrawMode === "circle") {
-    hint.textContent = n < 1
-      ? "Click center."
-      : "Move cursor to set radius, then click.";
-  }
-}
-
-function _takOnMapMouseMove(e) {
-  if (!_takDrawMode || _takDrawMode === "marker" || _takDrawPoints.length === 0) return;
-  const preview = [..._takDrawPoints, [e.latlng.lat, e.latlng.lng]];
-  _takUpdateTempDraw(preview);
-}
-
-function _takUpdateTempDraw(points) {
-  const pts = points || _takDrawPoints;
-  if (_takDrawTempLayer) { try { _takDrawTempLayer.remove(); } catch(e) {} _takDrawTempLayer = null; }
-  const layer = _takCustomLayers.find(l => l.id === _takActiveLayerId);
-  const color = layer ? layer.color : "#4a9eff";
-  if (_takDrawMode === "circle") {
-    if (pts.length < 2) return;
-    const center = pts[0];
-    const edge = pts[pts.length - 1];
-    const radiusMeters = _haversineDistance(center[0], center[1], edge[0], edge[1]);
-    if (!(radiusMeters > 0)) return;
-    _takDrawTempLayer = L.featureGroup([
-      L.circle(center, { radius: radiusMeters, color, weight: 2, opacity: 0.7, fillOpacity: 0.08, dashArray: "6 4" }),
-      L.circleMarker(center, { radius: 3, color, weight: 2, fillColor: color, fillOpacity: 1 }),
-    ]).addTo(_mapInstance);
-    return;
-  }
-  if (_takDrawMode === "ruler") {
-    if (pts.length < 2) return;
-    _takDrawTempLayer = L.polyline(pts, { color, weight: 2, opacity: 0.7, dashArray: "6 4" }).addTo(_mapInstance);
-  }
 }
 
 function _renderMapNodes(fitBounds = true) {
@@ -5032,7 +3589,7 @@ function _renderMapNodes(fitBounds = true) {
     const online = !!node.online;
 
     if (!_isNodeLayerVisible(node)) return;
-    const shortName = node.shortName || (node.userId || node.id || "?").slice(0, 4);
+    const shortName = node.shortName || (node.userId || node.id || "?").slice(0, 8);
     const label = node.longName || node.shortName || node.userId || node.id || "?";
     const status = online ? "online" : "offline";
     const battery = node.batteryLevel != null ? `${node.batteryLevel}%` : "-";
@@ -5048,10 +3605,10 @@ function _renderMapNodes(fitBounds = true) {
       ? ` style="background:${_getRoleColor(node)};border-color:rgba(255,255,255,0.25);box-shadow:0 0 6px ${_getRoleColor(node)}"`
       : "";
     const rangeEstimate = _estimateNodeRadioRange(node, allByMeshNum, reverseLookup);
-    const rangeLabel = _takEscapeHtml(_takFormatDistance(rangeEstimate.radiusMeters));
+    const rangeLabel = _mapEscapeHtml(_mapFormatDistance(rangeEstimate.radiusMeters));
     const rangeSourceLabel = rangeEstimate.source === "observed"
-      ? `observed + ${_takEscapeHtml(rangeEstimate.presetLabel)}`
-      : _takEscapeHtml(rangeEstimate.presetLabel);
+      ? `observed + ${_mapEscapeHtml(rangeEstimate.presetLabel)}`
+      : _mapEscapeHtml(rangeEstimate.presetLabel);
 
     const icon = L.divIcon({
       className: "",
@@ -5064,10 +3621,12 @@ function _renderMapNodes(fitBounds = true) {
       popupAnchor: [10, -6],
     });
 
+    const advertAge = formatAdvertAge(node.lastHeard);
     const popupHtml =
       `<div class="nodes-map-popup">` +
       `<div class="nodes-map-popup-name">${label}</div>` +
-      `<div class="nodes-map-popup-row">${status} | battery: ${battery}</div>` +
+      `<div class="nodes-map-popup-row">${status}${node.batteryLevel != null ? ` | battery: ${battery}` : ""}</div>` +
+      (advertAge ? `<div class="nodes-map-popup-row node-advert-age">${advertAge}</div>` : "") +
       `<div class="nodes-map-popup-row">range est: ${rangeLabel} | ${rangeSourceLabel}</div>` +
       (estimated ? `<div class="nodes-map-popup-row nodes-map-popup-row--est">~ position estimated</div>` : "") +
       `</div>`;
@@ -5707,19 +4266,6 @@ function _buildMapTopology(renderEntries = []) {
     }
   }
 
-  for (const link of latestMeshLinks) {
-    const fromEntry = byMeshNum.get(String(link?.from || ""));
-    const viaEntry = byMeshNum.get(String(link?.via || ""));
-    if (!fromEntry || !viaEntry) continue;
-    addEdge(fromEntry, viaEntry, {
-      kind: "relay",
-      real: true,
-      priority: 40,
-      snr: link?.snr ?? null,
-      color: _snrToColor(link?.snr),
-    });
-  }
-
   function buildAdjacencyFromEdges() {
     const adjacency = new Map();
     for (const edge of edgesByKey.values()) {
@@ -5891,28 +4437,28 @@ async function loadStatus() {
 function renderDeviceStatus(status) {
   const mesh = status.meshtastic || {};
   const connected = Boolean(mesh.connected);
-  const isConnecting = !connected && ["starting", "detecting"].includes(String(mesh.mode || ""));
-  const port = mesh.port ? ` on ${mesh.port}` : "";
-  const selectedPort = mesh.selectedPort ? String(mesh.selectedPort) : "";
-  const takChannel = Number.isInteger(mesh.takChannel) ? mesh.takChannel : 0;
-  const takHopLimit = Number.isInteger(mesh.takHopLimit) ? mesh.takHopLimit : 3;
+  const isConnecting = !connected && ["starting", "detecting", "connecting"].includes(String(mesh.mode || ""));
+  const transport = String(mesh.transport || "serial");
+  const address = mesh.address || mesh.selectedPort || "";
+  const linkLabel = address ? `${transport} ${address}` : transport;
+  const nodeName = String(mesh.name || "").trim();
   deviceStatus.className = `device-status ${connected ? "online" : (isConnecting ? "loading" : "offline")}`;
   deviceStatusTitle.textContent = connected
-    ? `Device connected${port}`
-    : (isConnecting ? `Connecting${port}` : "Device not connected");
+    ? `MeshCore${nodeName ? ` | ${nodeName}` : ""}`
+    : (isConnecting ? "Connecting MeshCore" : "Radio not connected");
   deviceStatusText.textContent = connected
-    ? `Auto-connected at startup | TAK ch${takChannel} | hop ${takHopLimit}`
+    ? `Linked via ${linkLabel}`
     : (
       isConnecting
         ? "Link check in progress..."
-        : (mesh.error || (selectedPort ? `Saved port ${selectedPort} is unavailable.` : "Waiting for auto-connect."))
+        : (mesh.error || (address ? `Saved ${transport} ${address} is unavailable.` : "Open SETUP to connect a radio."))
     );
 
-  deviceStatus.style.cursor = connected || !isConnecting ? "pointer" : "";
-  deviceStatus.title = connected
-    ? "Click to edit device identity"
-    : (isConnecting ? "" : "Click to select serial port");
+  deviceStatus.style.cursor = "pointer";
+  deviceStatus.title = "Open SETUP";
   latestMeshtasticConnected = connected;
+  latestMeshStatus = mesh;
+  if (typeof setupOnStatus === "function") setupOnStatus(mesh);
   if (typeof status.meshAiReply === "boolean") {
     applyMeshAiReply(status.meshAiReply);
   }
@@ -6009,7 +4555,7 @@ async function loadLogs() {
 async function loadNodes() {
   try {
     const payload = await fetchJson("/api/nodes");
-    renderNodes(payload.nodes || [], payload.meshLinks || []);
+    renderNodes(payload.nodes || []);
   } catch (error) {
     latestNodes = [];
     syncNodeSelectors();
@@ -6631,16 +5177,16 @@ walletSendForm.addEventListener("submit", async (event) => {
     applyCashuState();
     cashuSendTokenOutput.textContent = issuedToken;
     cashuSendTokenBlock.hidden = false;
-    let historyStatus = "Sent via Meshtastic";
+    let historyStatus = "Sent via MeshCore";
     try {
       await fetchJson("/api/mesh/send", {
         method: "POST",
         body: JSON.stringify({ destinationId: recipient, text: `[${amount} sats] ${issuedToken}` }),
       });
-      walletSendStatus.textContent = `Sent ${amount} sats to ${recipient} via Meshtastic`;
+      walletSendStatus.textContent = `Sent ${amount} sats to ${recipient} via MeshCore`;
     } catch (meshErr) {
       historyStatus = "Token created; mesh delivery failed";
-      walletSendStatus.textContent = `Token created, but Meshtastic delivery failed (${meshErr?.message || "unknown"}). Copy token and resend manually.`;
+      walletSendStatus.textContent = `Token created, but MeshCore delivery failed (${meshErr?.message || "unknown"}). Copy token and resend manually.`;
     }
     renderCashuSendSelection();
     walletMemoInput.value = "";
@@ -7333,11 +5879,7 @@ if (walletTestModeWarningConfirm) {
   });
 }
 deviceStatus.addEventListener("click", () => {
-  if (latestMeshtasticConnected) {
-    openDeviceMetaModal();
-    return;
-  }
-  openDeviceConnectModal();
+  openSetupScreen(latestMeshtasticConnected ? null : "connection");
 });
 meshAiReplyToggle.addEventListener("click", () => {
   const next = meshAiReplyToggle.getAttribute("aria-pressed") !== "true";
@@ -7345,32 +5887,6 @@ meshAiReplyToggle.addEventListener("click", () => {
     .then((data) => applyMeshAiReply(data.meshAiReply))
     .catch(() => {});
 });
-deviceMetaClose.addEventListener("click", closeDeviceMetaModal);
-deviceMetaModal.addEventListener("click", (event) => {
-  if (event.target.hasAttribute("data-close-device-meta")) {
-    closeDeviceMetaModal();
-  }
-});
-if (deviceConnectClose) {
-  deviceConnectClose.addEventListener("click", closeDeviceConnectModal);
-}
-if (deviceConnectModal) {
-  deviceConnectModal.addEventListener("click", (event) => {
-    if (event.target.hasAttribute("data-close-device-connect")) {
-      closeDeviceConnectModal();
-    }
-  });
-}
-if (deviceConnectRefresh) {
-  deviceConnectRefresh.addEventListener("click", () => {
-    refreshDeviceConnectPorts(String(deviceConnectPortSelect?.value || "").trim()).catch(() => {});
-  });
-}
-if (deviceConnectApply) {
-  deviceConnectApply.addEventListener("click", () => {
-    connectMeshtasticPortFromModal().catch(() => {});
-  });
-}
 if (walletTestModeWarningModal) {
   walletTestModeWarningModal.addEventListener("click", (event) => {
     if (event.target.hasAttribute("data-close-wallet-testmode-warning")) {
@@ -7409,83 +5925,6 @@ if (chatChannelModalForm) {
         chatChannelModalSave.disabled = false;
       }
     }
-  });
-}
-deviceMetaLocate.addEventListener("click", () => {
-  if (!navigator.geolocation) {
-    deviceMetaStatus.textContent = "Geolocation is not supported by this browser.";
-    return;
-  }
-  deviceMetaStatus.textContent = "Locating...";
-  deviceMetaLocate.disabled = true;
-  navigator.geolocation.getCurrentPosition(
-    (pos) => {
-      deviceMetaLat.value = pos.coords.latitude.toFixed(6);
-      deviceMetaLon.value = pos.coords.longitude.toFixed(6);
-      const accuracy = Math.round(pos.coords.accuracy || 0);
-      deviceMetaStatus.textContent = accuracy > 0 ? `Located (±${accuracy} m).` : "Located.";
-      deviceMetaLocate.disabled = false;
-    },
-    (err) => {
-      deviceMetaStatus.textContent = `Location error: ${err.message}`;
-      deviceMetaLocate.disabled = false;
-    },
-    { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
-  );
-});
-deviceMetaSave.addEventListener("click", () => {
-  deviceMetaStatus.textContent = "Saving...";
-  deviceMetaSave.disabled = true;
-  const payload = {
-    shortName: deviceMetaShortName.value.trim(),
-    longName: deviceMetaLongName.value.trim(),
-  };
-  const lat = deviceMetaLat.value.trim();
-  const lon = deviceMetaLon.value.trim();
-  if (lat !== "" && lon !== "") {
-    payload.latitude = parseFloat(lat);
-    payload.longitude = parseFloat(lon);
-  }
-  if (deviceMetaTakChannel && deviceMetaTakChannel.value.trim() !== "") {
-    payload.takChannel = parseInt(deviceMetaTakChannel.value, 10);
-  }
-  if (deviceMetaTakHopLimit && deviceMetaTakHopLimit.value.trim() !== "") {
-    payload.takHopLimit = parseInt(deviceMetaTakHopLimit.value, 10);
-  }
-  if (deviceMetaModemPreset && deviceMetaModemPreset.value.trim() !== "") {
-    payload.modemPreset = deviceMetaModemPreset.value.trim();
-  }
-  if (deviceMetaMeshHopLimit && deviceMetaMeshHopLimit.value.trim() !== "") {
-    payload.meshHopLimit = parseInt(deviceMetaMeshHopLimit.value, 10);
-  }
-  if (deviceMetaRegion && deviceMetaRegion.value.trim() !== "") {
-    payload.region = deviceMetaRegion.value.trim();
-  }
-  if (deviceMetaTxPower && deviceMetaTxPower.value.trim() !== "") {
-    payload.txPower = parseInt(deviceMetaTxPower.value, 10);
-  }
-  if (deviceMetaNodeRole && deviceMetaNodeRole.value.trim() !== "") {
-    payload.nodeRole = deviceMetaNodeRole.value.trim();
-  }
-  fetchJson("/api/device-meta", { method: "POST", body: JSON.stringify(payload) }).then(() => {
-    deviceMetaStatus.textContent = "Saved.";
-  }).catch((err) => {
-    deviceMetaStatus.textContent = `Error: ${err.message}`;
-  }).finally(() => {
-    deviceMetaSave.disabled = false;
-  });
-});
-if (deviceResetNodeDb) {
-  deviceResetNodeDb.addEventListener("click", () => {
-    deviceMetaStatus.textContent = "Resetting node DB...";
-    deviceResetNodeDb.disabled = true;
-    fetchJson("/api/reset-node-db", { method: "POST" }).then(() => {
-      deviceMetaStatus.textContent = "Node DB reset.";
-    }).catch((err) => {
-      deviceMetaStatus.textContent = `Error: ${err.message}`;
-    }).finally(() => {
-      deviceResetNodeDb.disabled = false;
-    });
   });
 }
 modelManagerModal.addEventListener("click", (event) => {
@@ -7623,13 +6062,6 @@ document.addEventListener("keydown", (event) => {
     closeNodeModal();
     return;
   }
-  if (event.key === "Escape" && deviceConnectModal && !deviceConnectModal.classList.contains("hidden")) {
-    closeDeviceConnectModal();
-    return;
-  }
-  if (event.key === "Escape" && !deviceMetaModal.classList.contains("hidden")) {
-    closeDeviceMetaModal();
-  }
 });
 
 function connectEvents() {
@@ -7660,57 +6092,46 @@ function connectEvents() {
   source.addEventListener("status", () => {
     loadStatus();
   });
-  source.addEventListener("position_requested", () => { /* bridge confirmed request sent */ });
   source.addEventListener("nodes", (event) => {
     const payload = JSON.parse(event.data);
-    renderNodes(payload.nodes || [], payload.meshLinks || []);
+    renderNodes(payload.nodes || []);
     if (_mapInstance && !nodesMapModal.classList.contains("hidden")) {
       _renderMapNodes(false);
     }
+    if (setupState.open && setupState.group === "contacts") {
+      setupRenderGroup();
+    }
+  });
+  // MeshCore bridge events for the SETUP console + delivery/trace UI.
+  [
+    "advert", "pending_contact", "telemetry", "admin_reply", "admin_session",
+    "admin_cmd_sent", "path_reset", "advert_sent", "contact_shared",
+    "contact_uri", "channels", "device_stats", "node_status", "time_set",
+    "rebooting", "factory_reset_done", "private_key", "private_key_imported",
+    "device_meta_saved",
+  ].forEach((name) => {
+    source.addEventListener(name, (event) => {
+      let payload = {};
+      try { payload = JSON.parse(event.data || "{}"); } catch {}
+      setupHandleSseEvent(name, payload);
+    });
+  });
+  source.addEventListener("path", (event) => {
+    let payload = {};
+    try { payload = JSON.parse(event.data || "{}"); } catch {}
+    setupHandleSseEvent("path", payload);
+    showTracePanel(payload);
+  });
+  source.addEventListener("delivered", (event) => {
+    let payload = {};
+    try { payload = JSON.parse(event.data || "{}"); } catch {}
+    handleDeliveredEvent(payload);
   });
   source.addEventListener("model-manager", (event) => {
     renderModelManager(JSON.parse(event.data));
   });
   source.addEventListener("swaps", (event) => {
     renderActiveSwaps(JSON.parse(event.data) || []);
-  });
-  source.addEventListener("tak_send_status", (event) => {
-    const { uid, status, transport } = JSON.parse(event.data);
-    const pending = _takPendingSends.get(uid);
-    if (pending) {
-      if (status === "sending" || status === "queued") {
-        _takSetLayerStatus(pending.layerId, "sending", "Mesh transfer in progress...");
-        return;
-      }
-      if (pending.timer) {
-        clearTimeout(pending.timer);
-        pending.timer = null;
-      }
-      if (status === "sent") {
-        _takPendingSends.delete(uid);
-        _takSetLayerStatus(pending.layerId, "sent", transport === "direct" ? "Broadcast sent" : "Broadcast sent to mesh");
-      } else if (status === "unconfirmed") {
-        _takSetLayerStatus(pending.layerId, "unconfirmed", "Broadcast queued, remote ACK not confirmed");
-      }
-      else {
-        _takPendingSends.delete(uid);
-        const msg = event.data ? (JSON.parse(event.data).reason || "") : "";
-        _takSetLayerStatus(pending.layerId, "error", (msg || "Send failed"));
-        console.error("[TAK] send failed:", msg);
-      }
-    }
-  });
-  source.addEventListener("tak_feature", (event) => {
-    const feature = JSON.parse(event.data);
-    if (feature?.type === "delete") _takHandleDeleteFeature(feature);
-    else if (feature) _takRenderIncomingFeature(feature);
-  });
-  source.addEventListener("tak_features", (event) => {
-    const features = JSON.parse(event.data) || [];
-    features.forEach((feature) => {
-      if (feature?.type === "delete") _takHandleDeleteFeature(feature);
-      else _takRenderIncomingFeature(feature);
-    });
   });
   source.addEventListener("ack_update", (event) => {
     const { id, ack } = JSON.parse(event.data);
@@ -7852,4 +6273,1620 @@ connectEvents();
 
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("/static/map-sw.js", { scope: "/" }).catch(() => {});
+}
+
+/* ============================================================
+   MeshCore delivery confirmations
+   ============================================================ */
+function handleDeliveredEvent(payload) {
+  const to = String(payload?.to || "").trim();
+  const rttMs = Number(payload?.rttMs);
+  if (!to) return;
+  for (let i = latestMessages.length - 1; i >= 0; i--) {
+    const msg = latestMessages[i];
+    if (msg && msg.direction === "out" && String(msg.recipient || "") === to) {
+      msg.ack = "delivered";
+      if (Number.isFinite(rttMs)) msg.rttMs = rttMs;
+      const bubble = msg.id != null ? chatReplyText.querySelector(`[data-msg-id="${msg.id}"]`) : null;
+      if (bubble) {
+        const icon = bubble.querySelector(".chat-bubble-ack");
+        if (icon) {
+          icon.className = "chat-bubble-ack chat-bubble-ack--delivered";
+          icon.title = Number.isFinite(rttMs) ? `Delivered | RTT ${Math.round(rttMs)}ms` : "Delivered";
+        }
+        const meta = bubble.querySelector(".chat-bubble-meta");
+        if (meta && Number.isFinite(rttMs) && !meta.textContent.includes("▸▸")) {
+          meta.textContent += ` | ▸▸ ${Math.round(rttMs)}ms`;
+        }
+      }
+      break;
+    }
+  }
+}
+
+/* ============================================================
+   Trace path result panel (hop list + SNR bars)
+   ============================================================ */
+function showTracePanel(payload) {
+  if (!tracePanel || !tracePanelBody) return;
+  tracePanelBody.innerHTML = "";
+  const contactId = String(payload?.contactId || "");
+  const node = latestNodes.find((n) => getNodeAddress(n) === contactId);
+  const who = node ? getNodeDisplayLabel(node) : contactId.slice(0, 8);
+
+  const meta = document.createElement("div");
+  meta.className = "trace-meta";
+
+  if (!payload?.ok) {
+    meta.textContent = `${who}: TRACE FAILED${payload?.reason ? ` - ${payload.reason}` : ""}`;
+    tracePanelBody.appendChild(meta);
+  } else if (payload.trace && Array.isArray(payload.trace.path)) {
+    const hops = payload.trace.path;
+    meta.textContent = `${who} | ${hops.length} HOP${hops.length === 1 ? "" : "S"}`;
+    tracePanelBody.appendChild(meta);
+    hops.forEach((hop, index) => {
+      const row = document.createElement("div");
+      row.className = "trace-hop";
+      const snr = Number(hop?.snr);
+      const hasSnr = Number.isFinite(snr);
+      // Map SNR -20..+10 dB to 0..100%
+      const pct = hasSnr ? Math.max(4, Math.min(100, ((snr + 20) / 30) * 100)) : 4;
+      const tier = !hasSnr || snr < 0 ? "is-weak" : snr < 5 ? "is-mid" : "";
+      const idx = document.createElement("span");
+      idx.className = "trace-hop-idx";
+      idx.textContent = String(index + 1).padStart(2, "0");
+      const hash = document.createElement("span");
+      hash.className = "trace-hop-hash";
+      hash.textContent = String(hop?.hash ?? "??");
+      const bar = document.createElement("span");
+      bar.className = "trace-hop-bar";
+      const fill = document.createElement("span");
+      if (tier) fill.className = tier;
+      fill.style.width = `${pct}%`;
+      bar.appendChild(fill);
+      const snrLabel = document.createElement("span");
+      snrLabel.className = "trace-hop-snr";
+      snrLabel.textContent = hasSnr ? `${snr.toFixed(1)} dB` : "-";
+      row.append(idx, hash, bar, snrLabel);
+      tracePanelBody.appendChild(row);
+    });
+  } else if (payload.discovery) {
+    meta.textContent = `${who}: PATH DISCOVERY OK`;
+    tracePanelBody.appendChild(meta);
+    const pre = document.createElement("pre");
+    pre.className = "setup-pre";
+    pre.textContent = JSON.stringify(payload.discovery, null, 2);
+    tracePanelBody.appendChild(pre);
+  } else {
+    meta.textContent = `${who}: PATH EVENT`;
+    tracePanelBody.appendChild(meta);
+  }
+
+  tracePanel.classList.remove("hidden");
+  tracePanel.setAttribute("aria-hidden", "false");
+}
+
+if (tracePanelClose) {
+  tracePanelClose.addEventListener("click", () => {
+    tracePanel.classList.add("hidden");
+    tracePanel.setAttribute("aria-hidden", "true");
+  });
+}
+
+/* ============================================================
+   SETUP screen - full MeshCore settings console
+   ============================================================ */
+const SETUP_GROUPS = [
+  { id: "connection", label: "CONNECTION", desc: "radio link" },
+  { id: "identity", label: "IDENTITY", desc: "name / position / keys" },
+  { id: "radio", label: "RADIO", desc: "freq / sf / power" },
+  { id: "channels", label: "CHANNELS", desc: "group slots + QR" },
+  { id: "contacts", label: "CONTACTS", desc: "mesh address book" },
+  { id: "device", label: "DEVICE", desc: "stats / reboot" },
+  { id: "advanced", label: "ADVANCED", desc: "telemetry / acks" },
+];
+
+const RADIO_PRESETS = [
+  { id: "EU", label: "EU/UK 869.525 SF11", frequency: 869.525, bandwidth: 250, spreadingFactor: 11, codingRate: 5 },
+  { id: "US", label: "USA/CA 910.525 SF10", frequency: 910.525, bandwidth: 250, spreadingFactor: 10, codingRate: 5 },
+  { id: "ANZ", label: "AUS/NZ 915.8 SF10", frequency: 915.8, bandwidth: 250, spreadingFactor: 10, codingRate: 5 },
+  { id: "CUSTOM", label: "CUSTOM" },
+];
+
+const setupState = {
+  open: false,
+  cursor: 0,
+  group: null,
+  ports: [],
+  detected: [],
+  selectedPort: "",
+  deviceMeta: null,
+  channels: null,
+  deviceStats: null,
+  exportedKey: null,
+  lastContactUri: null,
+  statusText: "",
+};
+
+function meshCommand(type, payload = {}) {
+  return fetchJson("/api/mesh/command", {
+    method: "POST",
+    body: JSON.stringify({ type, payload }),
+  });
+}
+
+function setupEl(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text != null) node.textContent = text;
+  return node;
+}
+
+function setupButton(label, onClick, variant = "") {
+  const btn = setupEl("button", `setup-btn${variant ? ` setup-btn--${variant}` : ""}`, label);
+  btn.type = "button";
+  btn.addEventListener("click", onClick);
+  return btn;
+}
+
+function setupField(labelText, inputEl) {
+  const field = setupEl("label", "setup-field");
+  field.appendChild(setupEl("span", "", labelText));
+  field.appendChild(inputEl);
+  return field;
+}
+
+function setupInput(type, value, placeholder, attrs = {}) {
+  const input = document.createElement("input");
+  input.type = type;
+  if (value != null && value !== "") input.value = value;
+  if (placeholder) input.placeholder = placeholder;
+  Object.entries(attrs).forEach(([k, v]) => input.setAttribute(k, String(v)));
+  return input;
+}
+
+function setupSetStatus(text) {
+  setupState.statusText = String(text || "");
+  const line = document.getElementById("setupStatusLine");
+  if (line) line.textContent = setupState.statusText;
+}
+
+function setupConfirmBlock(text, confirmLabel, onConfirm) {
+  const wrap = setupEl("div", "setup-confirm");
+  wrap.appendChild(setupEl("div", "setup-confirm-text", text));
+  const row = setupEl("div", "setup-btn-row");
+  row.appendChild(setupButton(confirmLabel, () => { wrap.remove(); onConfirm(); }, "danger"));
+  row.appendChild(setupButton("CANCEL", () => wrap.remove()));
+  wrap.appendChild(row);
+  return wrap;
+}
+
+function setupShowQr(container, uri, title) {
+  container.innerHTML = "";
+  const block = setupEl("div", "setup-qr-block");
+  if (title) block.appendChild(setupEl("div", "setup-section-label", title));
+  const canvas = document.createElement("canvas");
+  block.appendChild(canvas);
+  const uriEl = setupEl("div", "setup-qr-uri", uri);
+  block.appendChild(uriEl);
+  const row = setupEl("div", "setup-btn-row");
+  row.appendChild(setupButton("COPY", async () => {
+    try { await copyText(uri); setupSetStatus("URI copied."); } catch { setupSetStatus("Copy failed."); }
+  }));
+  row.appendChild(setupButton("CLOSE", () => { container.innerHTML = ""; }));
+  block.appendChild(row);
+  container.appendChild(block);
+  if (window.PixelQR) {
+    const ok = window.PixelQR.render(canvas, uri, { moduleSize: 4 });
+    if (!ok) setupSetStatus("URI too long for QR; use COPY.");
+  } else {
+    setupSetStatus("QR module missing; use COPY.");
+  }
+}
+
+function openSetupScreen(groupId = null) {
+  setupState.open = true;
+  setupState.group = null;
+  setupScreen.classList.remove("hidden");
+  setupScreen.setAttribute("aria-hidden", "false");
+  setupRenderLinkState();
+  setupRenderMenu();
+  fetchJson("/api/device-meta").then((meta) => {
+    setupState.deviceMeta = meta;
+    if (setupState.open && setupState.group) setupRenderGroup();
+  }).catch(() => {});
+  if (groupId) setupEnterGroup(groupId);
+}
+
+function closeSetupScreen() {
+  setupState.open = false;
+  setupState.group = null;
+  setupScreen.classList.add("hidden");
+  setupScreen.setAttribute("aria-hidden", "true");
+}
+
+function setupRenderLinkState() {
+  if (!setupLinkState) return;
+  const connected = Boolean(latestMeshStatus?.connected);
+  const transport = String(latestMeshStatus?.transport || "serial").toUpperCase();
+  const address = latestMeshStatus?.address || latestMeshStatus?.selectedPort || "";
+  setupLinkState.textContent = connected
+    ? `LINK: ${transport}${address ? ` ${address}` : ""}`
+    : "LINK: OFFLINE";
+  setupLinkState.classList.toggle("is-online", connected);
+}
+
+function setupOnStatus(mesh) {
+  if (!setupState.open) return;
+  setupRenderLinkState();
+  const live = document.getElementById("setupConnLive");
+  if (live) {
+    const connected = Boolean(mesh?.connected);
+    live.textContent = connected
+      ? `STATE: CONNECTED (${mesh.transport || "serial"}${mesh.address ? ` ${mesh.address}` : ""})`
+      : `STATE: ${String(mesh?.mode || "offline").toUpperCase()}${mesh?.error ? ` - ${mesh.error}` : ""}`;
+    live.style.color = connected ? "var(--success)" : "var(--danger)";
+  }
+}
+
+function setupRenderMenu() {
+  setupMenuEl.classList.remove("hidden");
+  setupSubEl.classList.add("hidden");
+  setupMenuEl.innerHTML = "";
+  SETUP_GROUPS.forEach((group, index) => {
+    const item = setupEl("button", `setup-menu-item${index === setupState.cursor ? " is-active" : ""}`);
+    item.type = "button";
+    item.setAttribute("role", "menuitem");
+    item.appendChild(setupEl("span", "setup-cursor", ">"));
+    item.appendChild(setupEl("span", "", group.label));
+    item.appendChild(setupEl("span", "setup-menu-item-desc", group.desc));
+    item.addEventListener("mouseenter", () => {
+      setupState.cursor = index;
+      setupRenderMenu();
+    });
+    item.addEventListener("click", () => setupEnterGroup(group.id));
+    setupMenuEl.appendChild(item);
+  });
+}
+
+function setupEnterGroup(groupId) {
+  setupState.group = groupId;
+  setupState.cursor = Math.max(0, SETUP_GROUPS.findIndex((g) => g.id === groupId));
+  setupRenderGroup();
+  if (groupId === "connection") setupLoadPorts();
+  if (groupId === "channels" && latestMeshtasticConnected) {
+    meshCommand("get_channels").catch((e) => setupSetStatus(e.message));
+  }
+}
+
+function setupExitGroup() {
+  setupState.group = null;
+  setupRenderMenu();
+}
+
+function setupGroupShell(title) {
+  setupMenuEl.classList.add("hidden");
+  setupSubEl.classList.remove("hidden");
+  setupSubEl.innerHTML = "";
+  const head = setupEl("div", "setup-sub-title", `> ${title}`);
+  setupSubEl.appendChild(head);
+  return setupSubEl;
+}
+
+function setupFooterRow(buttons) {
+  const row = setupEl("div", "setup-btn-row");
+  buttons.forEach((b) => row.appendChild(b));
+  const status = setupEl("div", "setup-status", setupState.statusText);
+  status.id = "setupStatusLine";
+  row.appendChild(status);
+  return row;
+}
+
+function setupRenderGroup() {
+  setupSetStatus("");
+  switch (setupState.group) {
+    case "connection": return setupRenderConnection();
+    case "identity": return setupRenderIdentity();
+    case "radio": return setupRenderRadio();
+    case "channels": return setupRenderChannels();
+    case "contacts": return setupRenderContacts();
+    case "device": return setupRenderDevice();
+    case "advanced": return setupRenderAdvanced();
+    default: return setupRenderMenu();
+  }
+}
+
+/* ---- CONNECTION ---- */
+async function setupLoadPorts() {
+  try {
+    const payload = await fetchJson("/api/mesh/ports");
+    setupState.ports = Array.isArray(payload.ports) ? payload.ports : [];
+    setupState.detected = Array.isArray(payload.detectedPorts) ? payload.detectedPorts : [];
+    setupState.selectedPort = String(payload.selectedPort || "");
+    if (setupState.group === "connection") setupRenderConnection();
+  } catch (error) {
+    setupSetStatus(`Port scan failed: ${error.message}`);
+  }
+}
+
+function setupRenderConnection() {
+  const root = setupGroupShell("CONNECTION");
+
+  const live = setupEl("div", "setup-section-label", "");
+  live.id = "setupConnLive";
+  root.appendChild(live);
+  setupOnStatus(latestMeshStatus);
+
+  const section = setupEl("div", "setup-section");
+  section.appendChild(setupEl("div", "setup-section-label", "TRANSPORT"));
+
+  const currentTransport = String(latestMeshStatus?.transport || "serial");
+  let transport = currentTransport === "tcp" ? "tcp" : "serial";
+
+  const toggle = setupEl("div", "setup-toggle");
+  const serialBtn = setupEl("button", "", "SERIAL");
+  serialBtn.type = "button";
+  const tcpBtn = setupEl("button", "", "TCP");
+  tcpBtn.type = "button";
+  const applyToggle = () => {
+    serialBtn.classList.toggle("is-active", transport === "serial");
+    tcpBtn.classList.toggle("is-active", transport === "tcp");
+    serialWrap.style.display = transport === "serial" ? "" : "none";
+    tcpWrap.style.display = transport === "tcp" ? "" : "none";
+  };
+  serialBtn.addEventListener("click", () => { transport = "serial"; applyToggle(); });
+  tcpBtn.addEventListener("click", () => { transport = "tcp"; applyToggle(); });
+  toggle.append(serialBtn, tcpBtn);
+  section.appendChild(toggle);
+
+  // Serial picker
+  const serialWrap = setupEl("div", "");
+  serialWrap.style.marginTop = "10px";
+  const portSelect = document.createElement("select");
+  const autoOption = document.createElement("option");
+  autoOption.value = "";
+  autoOption.textContent = "AUTO-DETECT";
+  portSelect.appendChild(autoOption);
+  setupState.ports.forEach((port) => {
+    const device = String(port?.device || "").trim();
+    if (!device) return;
+    const option = document.createElement("option");
+    option.value = device;
+    const detected = setupState.detected.includes(device) || port?.isDetected;
+    option.textContent = `${describeSerialPortOption(port)}${detected ? " *" : ""}`;
+    if (device === setupState.selectedPort) option.selected = true;
+    portSelect.appendChild(option);
+  });
+  if (setupState.selectedPort && !Array.from(portSelect.options).some((o) => o.value === setupState.selectedPort)) {
+    const saved = document.createElement("option");
+    saved.value = setupState.selectedPort;
+    saved.textContent = `${setupState.selectedPort} - saved`;
+    saved.selected = true;
+    portSelect.appendChild(saved);
+  }
+  const serialGrid = setupEl("div", "setup-grid");
+  serialGrid.appendChild(setupField("SERIAL PORT", portSelect));
+  serialWrap.appendChild(serialGrid);
+  const refreshRow = setupEl("div", "setup-btn-row");
+  refreshRow.appendChild(setupButton("RESCAN PORTS", () => {
+    setupSetStatus("Scanning ports...");
+    setupLoadPorts();
+  }));
+  serialWrap.appendChild(refreshRow);
+  section.appendChild(serialWrap);
+
+  // TCP input
+  const tcpWrap = setupEl("div", "");
+  tcpWrap.style.marginTop = "10px";
+  const tcpInput = setupInput("text", currentTransport === "tcp" ? (latestMeshStatus?.address || "") : "", "192.168.1.50:5000");
+  const tcpGrid = setupEl("div", "setup-grid");
+  tcpGrid.appendChild(setupField("HOST:PORT", tcpInput));
+  tcpWrap.appendChild(tcpGrid);
+  section.appendChild(tcpWrap);
+  applyToggle();
+
+  root.appendChild(section);
+
+  const connectBtn = setupButton("CONNECT", async () => {
+    const address = transport === "tcp" ? tcpInput.value.trim() : String(portSelect.value || "").trim();
+    if (transport === "tcp" && !address) {
+      setupSetStatus("Enter host:port for TCP.");
+      return;
+    }
+    connectBtn.disabled = true;
+    setupSetStatus(`Connecting via ${transport}${address ? ` ${address}` : " (auto)"}...`);
+    try {
+      await fetchJson("/api/mesh/connect", {
+        method: "POST",
+        body: JSON.stringify({ transport, address }),
+      });
+      setupSetStatus("Bridge restarting; watch link state above.");
+      await loadStatus();
+    } catch (error) {
+      setupSetStatus(`Connect failed: ${error.message}`);
+    } finally {
+      connectBtn.disabled = false;
+    }
+  }, "primary");
+
+  root.appendChild(setupFooterRow([
+    connectBtn,
+    setupButton("BACK", setupExitGroup),
+  ]));
+}
+
+/* ---- IDENTITY ---- */
+function setupRenderIdentity() {
+  const root = setupGroupShell("IDENTITY");
+  const meta = setupState.deviceMeta || {};
+
+  const section = setupEl("div", "setup-section");
+  section.appendChild(setupEl("div", "setup-section-label", "NODE"));
+  const nameInput = setupInput("text", meta.name || "", "node name", { maxlength: 32 });
+  const latInput = setupInput("number", meta.latitude != null ? meta.latitude : "", "55.7558", { step: "any" });
+  const lonInput = setupInput("number", meta.longitude != null ? meta.longitude : "", "37.6173", { step: "any" });
+  const grid = setupEl("div", "setup-grid");
+  grid.appendChild(setupField("NAME", nameInput));
+  grid.appendChild(setupField("ADVERT LAT", latInput));
+  grid.appendChild(setupField("ADVERT LON", lonInput));
+  section.appendChild(grid);
+  const locRow = setupEl("div", "setup-btn-row");
+  locRow.appendChild(setupButton("USE BROWSER LOCATION", () => {
+    if (!navigator.geolocation) {
+      setupSetStatus("Geolocation unsupported.");
+      return;
+    }
+    setupSetStatus("Locating...");
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        latInput.value = pos.coords.latitude.toFixed(6);
+        lonInput.value = pos.coords.longitude.toFixed(6);
+        setupSetStatus("Located.");
+      },
+      (err) => setupSetStatus(`Location error: ${err.message}`),
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
+    );
+  }));
+  section.appendChild(locRow);
+  root.appendChild(section);
+
+  const clockSection = setupEl("div", "setup-section");
+  clockSection.appendChild(setupEl("div", "setup-section-label", "CLOCK / BLE"));
+  const pinInput = setupInput("number", "", "123456", { min: 0, max: 999999, step: 1 });
+  const clockGrid = setupEl("div", "setup-grid");
+  clockGrid.appendChild(setupField("BLE PIN", pinInput));
+  clockSection.appendChild(clockGrid);
+  const clockRow = setupEl("div", "setup-btn-row");
+  clockRow.appendChild(setupButton("SYNC CLOCK", async () => {
+    try {
+      await meshCommand("set_time", { epoch: Math.floor(Date.now() / 1000) });
+      setupSetStatus("Clock sync sent.");
+    } catch (error) {
+      setupSetStatus(`set_time failed: ${error.message}`);
+    }
+  }));
+  clockRow.appendChild(setupButton("APPLY PIN", async () => {
+    const pin = pinInput.value.trim();
+    if (!pin) {
+      setupSetStatus("Enter a BLE pin first.");
+      return;
+    }
+    try {
+      await meshCommand("set_device_meta", { blePin: parseInt(pin, 10) });
+      setupSetStatus("BLE pin sent to device.");
+    } catch (error) {
+      setupSetStatus(`set pin failed: ${error.message}`);
+    }
+  }));
+  clockSection.appendChild(clockRow);
+  root.appendChild(clockSection);
+
+  const keySection = setupEl("div", "setup-section");
+  keySection.appendChild(setupEl("div", "setup-section-label", "IDENTITY KEY"));
+  const keyOut = setupEl("div", "");
+  keyOut.id = "setupKeyOut";
+  const importInput = setupInput("text", "", "private key hex");
+  const keyGrid = setupEl("div", "setup-grid");
+  keyGrid.appendChild(setupField("IMPORT KEY (HEX)", importInput));
+  const keyRow = setupEl("div", "setup-btn-row");
+  keyRow.appendChild(setupButton("EXPORT KEY", () => {
+    keySection.appendChild(setupConfirmBlock(
+      "EXPORT PRIVATE KEY? ANYONE WITH IT CAN IMPERSONATE THIS NODE.",
+      "YES, EXPORT",
+      async () => {
+        try {
+          await meshCommand("export_private_key");
+          setupSetStatus("Export requested; key will appear below.");
+        } catch (error) {
+          setupSetStatus(`export failed: ${error.message}`);
+        }
+      },
+    ));
+  }, "danger"));
+  keyRow.appendChild(setupButton("IMPORT KEY", () => {
+    const keyHex = importInput.value.trim();
+    if (!keyHex) {
+      setupSetStatus("Paste a private key hex first.");
+      return;
+    }
+    keySection.appendChild(setupConfirmBlock(
+      "IMPORT KEY? THIS REPLACES THE NODE IDENTITY PERMANENTLY.",
+      "YES, IMPORT",
+      async () => {
+        try {
+          await meshCommand("import_private_key", { key: keyHex });
+          setupSetStatus("Import sent.");
+        } catch (error) {
+          setupSetStatus(`import failed: ${error.message}`);
+        }
+      },
+    ));
+  }, "danger"));
+  keySection.appendChild(keyGrid);
+  keySection.appendChild(keyRow);
+  keySection.appendChild(keyOut);
+  if (setupState.exportedKey) {
+    const pre = setupEl("pre", "setup-pre", JSON.stringify(setupState.exportedKey, null, 2));
+    keyOut.appendChild(pre);
+  }
+  root.appendChild(keySection);
+
+  root.appendChild(setupFooterRow([
+    setupButton("APPLY", async () => {
+      const payload = {};
+      if (nameInput.value.trim() !== "") payload.name = nameInput.value.trim();
+      const lat = latInput.value.trim();
+      const lon = lonInput.value.trim();
+      if (lat !== "" && lon !== "") {
+        payload.latitude = parseFloat(lat);
+        payload.longitude = parseFloat(lon);
+      }
+      if (!Object.keys(payload).length) {
+        setupSetStatus("Nothing to apply.");
+        return;
+      }
+      try {
+        await meshCommand("set_device_meta", payload);
+        setupSetStatus("Saving to device...");
+      } catch (error) {
+        setupSetStatus(`save failed: ${error.message}`);
+      }
+    }, "primary"),
+    setupButton("REVERT", () => {
+      fetchJson("/api/device-meta").then((data) => {
+        setupState.deviceMeta = data;
+        setupRenderIdentity();
+        setupSetStatus("Reverted to device values.");
+      }).catch((error) => setupSetStatus(error.message));
+    }),
+    setupButton("BACK", setupExitGroup),
+  ]));
+}
+
+/* ---- RADIO ---- */
+function setupRenderRadio() {
+  const root = setupGroupShell("RADIO");
+  const meta = setupState.deviceMeta || {};
+  const radio = meta.radio || {};
+
+  const section = setupEl("div", "setup-section");
+  section.appendChild(setupEl("div", "setup-section-label", "REGION CARTRIDGE"));
+
+  const presetSelect = document.createElement("select");
+  RADIO_PRESETS.forEach((preset) => {
+    const option = document.createElement("option");
+    option.value = preset.id;
+    option.textContent = preset.label;
+    presetSelect.appendChild(option);
+  });
+  const matching = RADIO_PRESETS.find((p) => p.frequency != null &&
+    Number(radio.frequency) === p.frequency &&
+    Number(radio.bandwidth) === p.bandwidth &&
+    Number(radio.spreadingFactor) === p.spreadingFactor &&
+    Number(radio.codingRate) === p.codingRate);
+  presetSelect.value = matching ? matching.id : "CUSTOM";
+
+  const freqInput = setupInput("number", radio.frequency != null ? radio.frequency : "", "869.525", { step: "0.001", min: 100, max: 2500 });
+  const bwInput = setupInput("number", radio.bandwidth != null ? radio.bandwidth : "", "250", { step: "0.01", min: 7, max: 500 });
+  const sfInput = setupInput("number", radio.spreadingFactor != null ? radio.spreadingFactor : "", "11", { step: 1, min: 5, max: 12 });
+  const crInput = setupInput("number", radio.codingRate != null ? radio.codingRate : "", "5", { step: 1, min: 5, max: 8 });
+
+  presetSelect.addEventListener("change", () => {
+    const preset = RADIO_PRESETS.find((p) => p.id === presetSelect.value);
+    if (preset && preset.frequency != null) {
+      freqInput.value = preset.frequency;
+      bwInput.value = preset.bandwidth;
+      sfInput.value = preset.spreadingFactor;
+      crInput.value = preset.codingRate;
+    }
+  });
+  [freqInput, bwInput, sfInput, crInput].forEach((input) => {
+    input.addEventListener("input", () => { presetSelect.value = "CUSTOM"; });
+  });
+
+  const grid = setupEl("div", "setup-grid");
+  grid.appendChild(setupField("PRESET", presetSelect));
+  grid.appendChild(setupField("FREQ MHZ", freqInput));
+  grid.appendChild(setupField("BW KHZ", bwInput));
+  grid.appendChild(setupField("SF", sfInput));
+  grid.appendChild(setupField("CR 4/x", crInput));
+  section.appendChild(grid);
+  root.appendChild(section);
+
+  const powerSection = setupEl("div", "setup-section");
+  powerSection.appendChild(setupEl("div", "setup-section-label", "TX POWER"));
+  const maxTx = Number(radio.maxTxPower) || 30;
+  const slider = setupInput("range", radio.txPower != null ? radio.txPower : 1, "", { min: 1, max: maxTx, step: 1 });
+  const sliderValue = setupEl("span", "setup-slider-value", `${slider.value} dBm`);
+  slider.addEventListener("input", () => { sliderValue.textContent = `${slider.value} dBm`; });
+  const sliderRow = setupEl("div", "setup-slider-row");
+  sliderRow.append(slider, sliderValue);
+  powerSection.appendChild(sliderRow);
+  powerSection.appendChild(setupEl("div", "setup-row-meta", `MAX ${maxTx} dBm (from device)`));
+  root.appendChild(powerSection);
+
+  const advanced = setupEl("details", "setup-fold");
+  advanced.appendChild(setupEl("summary", "", "ADVANCED TUNING"));
+  const advSection = setupEl("div", "setup-section");
+  const rxDelayInput = setupInput("number", "", "0", { min: 0, step: 1 });
+  const airtimeInput = setupInput("number", "", "0", { min: 0, step: 1 });
+  const advGrid = setupEl("div", "setup-grid");
+  advGrid.appendChild(setupField("RX DELAY", rxDelayInput));
+  advGrid.appendChild(setupField("AIRTIME FACTOR", airtimeInput));
+  advSection.appendChild(advGrid);
+  advanced.appendChild(advSection);
+  root.appendChild(advanced);
+
+  root.appendChild(setupFooterRow([
+    setupButton("APPLY", async () => {
+      const payload = {};
+      const freq = parseFloat(freqInput.value);
+      const bw = parseFloat(bwInput.value);
+      const sf = parseInt(sfInput.value, 10);
+      const cr = parseInt(crInput.value, 10);
+      if ([freq, bw, sf, cr].every((v) => Number.isFinite(v))) {
+        payload.radio = { frequency: freq, bandwidth: bw, spreadingFactor: sf, codingRate: cr };
+      }
+      payload.txPower = parseInt(slider.value, 10);
+      const rxDelay = rxDelayInput.value.trim();
+      const airtime = airtimeInput.value.trim();
+      if (rxDelay !== "" || airtime !== "") {
+        payload.tuning = { rxDelay: parseInt(rxDelay || "0", 10), airtimeFactor: parseInt(airtime || "0", 10) };
+      }
+      try {
+        await meshCommand("set_device_meta", payload);
+        setupSetStatus("Radio config sent.");
+      } catch (error) {
+        setupSetStatus(`save failed: ${error.message}`);
+      }
+    }, "primary"),
+    setupButton("REVERT", () => {
+      fetchJson("/api/device-meta").then((data) => {
+        setupState.deviceMeta = data;
+        setupRenderRadio();
+        setupSetStatus("Reverted to device values.");
+      }).catch((error) => setupSetStatus(error.message));
+    }),
+    setupButton("BACK", setupExitGroup),
+  ]));
+}
+
+/* ---- CHANNELS ---- */
+function buildChannelUri(name, secretHex) {
+  return `meshcore://channel?name=${encodeURIComponent(name || "")}&secret=${secretHex || ""}`;
+}
+
+function setupRenderChannels() {
+  const root = setupGroupShell("CHANNELS");
+
+  const qrSlot = setupEl("div", "");
+  qrSlot.id = "setupChannelsQr";
+
+  if (!Array.isArray(setupState.channels)) {
+    root.appendChild(setupEl("div", "setup-row-meta", latestMeshtasticConnected
+      ? "Loading channel slots from device..."
+      : "Radio offline - connect first to edit channels."));
+  } else if (!setupState.channels.length) {
+    root.appendChild(setupEl("div", "setup-row-meta", "No channel slots reported."));
+  } else {
+    setupState.channels.forEach((channel) => {
+      const row = setupEl("div", "setup-row");
+      row.appendChild(setupEl("span", "setup-row-name", `CH${channel.index}`));
+      const nameInput = setupInput("text", channel.name || "", "channel name", { maxlength: 32 });
+      const secretHex = typeof channel.secret === "string" ? channel.secret : "";
+      const secretInput = setupInput("text", secretHex, "secret (hex, 32 chars)");
+      nameInput.style.width = "140px";
+      secretInput.style.width = "220px";
+      row.appendChild(nameInput);
+      row.appendChild(secretInput);
+      const actions = setupEl("div", "setup-row-actions");
+      actions.appendChild(setupButton("SET", async () => {
+        try {
+          await meshCommand("set_channel", {
+            index: channel.index,
+            name: nameInput.value.trim(),
+            secret: secretInput.value.trim(),
+          });
+          setupSetStatus(`CH${channel.index} update sent.`);
+        } catch (error) {
+          setupSetStatus(`set_channel failed: ${error.message}`);
+        }
+      }, "primary"));
+      actions.appendChild(setupButton("SHARE", () => {
+        const uri = buildChannelUri(nameInput.value.trim(), secretInput.value.trim());
+        setupShowQr(qrSlot, uri, `CH${channel.index} ${nameInput.value.trim() || "(unnamed)"}`);
+      }));
+      row.appendChild(actions);
+      root.appendChild(row);
+    });
+  }
+
+  root.appendChild(qrSlot);
+
+  const importSection = setupEl("div", "setup-section");
+  importSection.appendChild(setupEl("div", "setup-section-label", "IMPORT URI"));
+  const importInput = setupInput("text", "", "meshcore://...");
+  const importGrid = setupEl("div", "setup-grid");
+  importGrid.appendChild(setupField("PASTE MESHCORE URI", importInput));
+  importSection.appendChild(importGrid);
+  const importRow = setupEl("div", "setup-btn-row");
+  importRow.appendChild(setupButton("IMPORT", async () => {
+    const uri = importInput.value.trim();
+    if (!uri.startsWith("meshcore://")) {
+      setupSetStatus("Expected a meshcore:// URI.");
+      return;
+    }
+    try {
+      await meshCommand("import_contact", { uri });
+      setupSetStatus("Import sent to device.");
+    } catch (error) {
+      setupSetStatus(`import failed: ${error.message}`);
+    }
+  }, "primary"));
+  importSection.appendChild(importRow);
+  root.appendChild(importSection);
+
+  root.appendChild(setupFooterRow([
+    setupButton("RELOAD SLOTS", () => {
+      setupState.channels = null;
+      setupRenderChannels();
+      meshCommand("get_channels").catch((e) => setupSetStatus(e.message));
+    }),
+    setupButton("BACK", setupExitGroup),
+  ]));
+}
+
+/* ---- CONTACTS ---- */
+// outPath is a hex string, one byte (2 hex chars) per hop hash.
+function formatContactPath(node) {
+  if (node?.hopsAway == null) return "PATH: FLOOD";
+  const hex = String(node?.outPath || "").replace(/[^0-9a-fA-F]/g, "").toLowerCase();
+  const hops = hex.length >= 2 ? hex.match(/.{2}/g) : null;
+  if (!hops || !hops.length) {
+    return node.hopsAway === 0
+      ? "PATH: DIRECT (0 HOPS)"
+      : `PATH: ${node.hopsAway} HOP${node.hopsAway === 1 ? "" : "S"}`;
+  }
+  return `PATH: ${hops.join(" > ")} (${hops.length} HOP${hops.length === 1 ? "" : "S"})`;
+}
+
+function setupRenderContacts() {
+  const root = setupGroupShell("CONTACTS");
+
+  const qrSlot = setupEl("div", "");
+  qrSlot.id = "setupContactsQr";
+
+  const advertRow = setupEl("div", "setup-btn-row");
+  advertRow.appendChild(setupButton("SEND ADVERT (ZERO-HOP)", async () => {
+    try { await meshCommand("send_advert", { flood: false }); setupSetStatus("Advert sent."); }
+    catch (error) { setupSetStatus(error.message); }
+  }));
+  advertRow.appendChild(setupButton("SEND ADVERT (FLOOD)", async () => {
+    try { await meshCommand("send_advert", { flood: true }); setupSetStatus("Flood advert sent."); }
+    catch (error) { setupSetStatus(error.message); }
+  }));
+  advertRow.appendChild(setupButton("REFRESH", async () => {
+    try { await meshCommand("refresh_contacts"); setupSetStatus("Refreshing contacts..."); }
+    catch (error) { setupSetStatus(error.message); }
+  }));
+  root.appendChild(advertRow);
+
+  const nodes = sortNodesForUi(latestNodes);
+  if (!nodes.length) {
+    root.appendChild(setupEl("div", "setup-row-meta", "No contacts yet. Send an advert and wait for replies."));
+  }
+  const nameLabels = buildNodeNameMap(nodes);
+  nodes.forEach((node) => {
+    const address = getNodeAddress(node);
+    if (!address) return;
+    const row = setupEl("div", "setup-row");
+
+    const star = setupEl("button", `setup-fav-star${isFavoriteNode(node) ? " is-favorite" : ""}`, isFavoriteNode(node) ? "★" : "☆");
+    star.type = "button";
+    star.title = "Toggle favorite";
+    star.addEventListener("click", async () => {
+      try {
+        await toggleNodeFavorite(address, !isFavoriteNode(node));
+      } catch {}
+    });
+    row.appendChild(star);
+
+    const type = String(node.contactType || "unknown").toLowerCase();
+    row.appendChild(setupEl("span", `setup-chip setup-chip--${CONTACT_TYPE_LABELS[type] ? type : "unknown"}`, (CONTACT_TYPE_LABELS[type] || "UNKN")));
+    row.appendChild(setupEl("span", "setup-row-name", nameLabels.get(address) || address.slice(0, 8)));
+    const metaBits = [address.slice(0, 8)];
+    const advertAge = formatAdvertAge(node.lastHeard);
+    if (advertAge) metaBits.push(advertAge);
+    metaBits.push(node.hopsAway != null ? `${node.hopsAway} HOP${node.hopsAway === 1 ? "" : "S"}` : "FLOOD");
+    row.appendChild(setupEl("span", "setup-row-meta", metaBits.join(" | ")));
+
+    const actions = setupEl("div", "setup-row-actions");
+    if (isAdminTargetNode(node)) {
+      actions.appendChild(setupButton("ADMIN", () => openAdminConsole(address), "primary"));
+    }
+    actions.appendChild(setupButton("TELEMETRY", () => {
+      setupSetStatus(`Telemetry requested from ${address.slice(0, 8)}...`);
+      requestNodeTelemetry(address, setupSetStatus);
+    }));
+    actions.appendChild(setupButton("TRACE", async () => {
+      setupSetStatus("Trace sent; result opens in TRACE PATH panel.");
+      try { await meshCommand("trace_path", { contactId: address }); }
+      catch (error) { setupSetStatus(error.message); }
+    }));
+    actions.appendChild(setupButton("DISCOVER PATH", async () => {
+      setupSetStatus(`Path discovery sent to ${address.slice(0, 8)}...`);
+      try { await meshCommand("path_discovery", { contactId: address }); }
+      catch (error) { setupSetStatus(error.message); }
+    }));
+    actions.appendChild(setupButton("RESET PATH", async () => {
+      try { await meshCommand("reset_path", { contactId: address }); setupSetStatus("Path reset sent."); }
+      catch (error) { setupSetStatus(error.message); }
+    }));
+    actions.appendChild(setupButton("SHARE", async () => {
+      try { await meshCommand("share_contact", { contactId: address }); setupSetStatus("Contact shared zero-hop."); }
+      catch (error) { setupSetStatus(error.message); }
+    }));
+    actions.appendChild(setupButton("EXPORT QR", async () => {
+      setupSetStatus("Export requested; QR appears below.");
+      try { await meshCommand("export_contact", { contactId: address }); }
+      catch (error) { setupSetStatus(error.message); }
+    }));
+    actions.appendChild(setupButton("REMOVE", () => {
+      row.appendChild(setupConfirmBlock(
+        `REMOVE ${address.slice(0, 8)} FROM CONTACTS?`,
+        "YES, REMOVE",
+        async () => {
+          try { await meshCommand("remove_contact", { contactId: address }); setupSetStatus("Remove sent."); }
+          catch (error) { setupSetStatus(error.message); }
+        },
+      ));
+    }, "danger"));
+    row.appendChild(actions);
+    row.appendChild(setupEl("div", "setup-row-path", formatContactPath(node)));
+    root.appendChild(row);
+  });
+
+  root.appendChild(qrSlot);
+  if (setupState.lastContactUri) {
+    setupShowQr(qrSlot, setupState.lastContactUri.uri, `CONTACT ${String(setupState.lastContactUri.contactId || "").slice(0, 8)}`);
+  }
+
+  root.appendChild(setupFooterRow([
+    setupButton("EXPORT SELF QR", async () => {
+      setupSetStatus("Exporting own contact card...");
+      try { await meshCommand("export_contact", { contactId: "self" }); }
+      catch (error) { setupSetStatus(error.message); }
+    }),
+    setupButton("BACK", setupExitGroup),
+  ]));
+}
+
+/* ---- DEVICE ---- */
+function setupRenderDevice() {
+  const root = setupGroupShell("DEVICE");
+  const meta = setupState.deviceMeta || {};
+  const info = meta.deviceInfo || {};
+  const battery = meta.battery || {};
+
+  const section = setupEl("div", "setup-section");
+  section.appendChild(setupEl("div", "setup-section-label", "HARDWARE"));
+  const kv = setupEl("div", "setup-kv");
+  const addKv = (k, v) => {
+    if (v == null || v === "") return;
+    kv.appendChild(setupEl("span", "setup-k", k));
+    kv.appendChild(setupEl("span", "setup-v", String(v)));
+  };
+  addKv("PUBKEY", meta.localPubkey);
+  addKv("FIRMWARE", info.ver || info.firmware_version || info.version);
+  addKv("BUILD", info.fw_build || info.firmware_build_date);
+  addKv("MODEL", info.model || info.manufacturer_name);
+  addKv("MAX CONTACTS", info.max_contacts);
+  addKv("MAX CHANNELS", info.max_channels);
+  addKv("BATTERY", battery.level != null ? `${battery.level} mV` : null);
+  addKv("STORAGE", battery.used_kb != null ? `${battery.used_kb} / ${battery.total_kb} KB` : null);
+  if (!kv.children.length) addKv("STATE", "no device info yet - connect the radio");
+  section.appendChild(kv);
+  root.appendChild(section);
+
+  const statsSlot = setupEl("div", "");
+  statsSlot.id = "setupDeviceStats";
+  if (setupState.deviceStats) {
+    const pre = setupEl("pre", "setup-pre", JSON.stringify(setupState.deviceStats, null, 2));
+    statsSlot.appendChild(pre);
+  }
+  root.appendChild(statsSlot);
+
+  const dangerSection = setupEl("div", "setup-section");
+  dangerSection.appendChild(setupEl("div", "setup-section-label", "POWER"));
+  const dangerRow = setupEl("div", "setup-btn-row");
+  dangerRow.appendChild(setupButton("STATS", async () => {
+    setupSetStatus("Requesting core/radio/packet stats...");
+    try { await meshCommand("get_device_info"); }
+    catch (error) { setupSetStatus(error.message); }
+  }));
+  dangerRow.appendChild(setupButton("REBOOT", () => {
+    dangerSection.appendChild(setupConfirmBlock(
+      "REBOOT THE RADIO NOW?",
+      "YES, REBOOT",
+      async () => {
+        try { await meshCommand("reboot"); setupSetStatus("Reboot sent."); }
+        catch (error) { setupSetStatus(error.message); }
+      },
+    ));
+  }, "danger"));
+  dangerRow.appendChild(setupButton("FACTORY RESET", () => {
+    dangerSection.appendChild(setupConfirmBlock(
+      "FACTORY RESET WIPES KEYS, CONTACTS AND CONFIG.",
+      "I UNDERSTAND",
+      () => {
+        dangerSection.appendChild(setupConfirmBlock(
+          "HOLD ON. REALLY?",
+          "YES, WIPE IT",
+          async () => {
+            try { await meshCommand("factory_reset", { confirm: true }); setupSetStatus("Factory reset sent."); }
+            catch (error) { setupSetStatus(error.message); }
+          },
+        ));
+      },
+    ));
+  }, "danger"));
+  dangerSection.appendChild(dangerRow);
+  root.appendChild(dangerSection);
+
+  root.appendChild(setupFooterRow([
+    setupButton("BACK", setupExitGroup),
+  ]));
+}
+
+/* ---- ADVANCED ---- */
+function setupRenderAdvanced() {
+  const root = setupGroupShell("ADVANCED");
+  const meta = setupState.deviceMeta || {};
+  const advanced = meta.advanced || {};
+
+  const section = setupEl("div", "setup-section");
+  section.appendChild(setupEl("div", "setup-section-label", "PROTOCOL"));
+
+  const telemetrySelect = document.createElement("select");
+  [["0", "0 - ALWAYS"], ["1", "1 - DEVICE"], ["2", "2 - NEVER"]].forEach(([value, label]) => {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = label;
+    telemetrySelect.appendChild(option);
+  });
+  if (advanced.telemetryModeBase != null) telemetrySelect.value = String(advanced.telemetryModeBase);
+
+  const advertLocSelect = document.createElement("select");
+  [["0", "0 - NO LOCATION"], ["1", "1 - SHARE LOCATION"]].forEach(([value, label]) => {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = label;
+    advertLocSelect.appendChild(option);
+  });
+  if (advanced.advertLocPolicy != null) advertLocSelect.value = String(advanced.advertLocPolicy);
+
+  const makeOnOff = (initial) => {
+    let on = Boolean(initial);
+    const toggle = setupEl("div", "setup-toggle");
+    const offBtn = setupEl("button", "", "OFF");
+    offBtn.type = "button";
+    const onBtn = setupEl("button", "", "ON");
+    onBtn.type = "button";
+    const sync = () => {
+      onBtn.classList.toggle("is-active", on);
+      offBtn.classList.toggle("is-active", !on);
+    };
+    onBtn.addEventListener("click", () => { on = true; sync(); });
+    offBtn.addEventListener("click", () => { on = false; sync(); });
+    sync();
+    return { el: toggle, get: () => on, append: () => { toggle.append(offBtn, onBtn); return toggle; } };
+  };
+  const multiAcks = makeOnOff(Number(advanced.multiAcks) > 0);
+  multiAcks.append();
+  const manualAdd = makeOnOff(Boolean(advanced.manualAddContacts));
+  manualAdd.append();
+
+  const grid = setupEl("div", "setup-grid");
+  grid.appendChild(setupField("TELEMETRY MODE (BASE)", telemetrySelect));
+  grid.appendChild(setupField("ADVERT LOC POLICY", advertLocSelect));
+  const multiField = setupEl("div", "setup-field");
+  multiField.appendChild(setupEl("span", "", "MULTI ACKS"));
+  multiField.appendChild(multiAcks.el);
+  grid.appendChild(multiField);
+  const manualField = setupEl("div", "setup-field");
+  manualField.appendChild(setupEl("span", "", "MANUAL ADD CONTACTS"));
+  manualField.appendChild(manualAdd.el);
+  grid.appendChild(manualField);
+  section.appendChild(grid);
+  root.appendChild(section);
+
+  root.appendChild(setupFooterRow([
+    setupButton("APPLY", async () => {
+      try {
+        await meshCommand("set_device_meta", {
+          telemetryModeBase: parseInt(telemetrySelect.value, 10),
+          advertLocPolicy: parseInt(advertLocSelect.value, 10),
+          multiAcks: multiAcks.get() ? 1 : 0,
+          manualAddContacts: manualAdd.get(),
+        });
+        setupSetStatus("Advanced settings sent.");
+      } catch (error) {
+        setupSetStatus(`save failed: ${error.message}`);
+      }
+    }, "primary"),
+    setupButton("REVERT", () => {
+      fetchJson("/api/device-meta").then((data) => {
+        setupState.deviceMeta = data;
+        setupRenderAdvanced();
+        setupSetStatus("Reverted to device values.");
+      }).catch((error) => setupSetStatus(error.message));
+    }),
+    setupButton("BACK", setupExitGroup),
+  ]));
+}
+
+/* ---- SSE plumbing ---- */
+function setupHandleSseEvent(name, payload) {
+  switch (name) {
+    case "channels":
+      setupState.channels = Array.isArray(payload?.channels) ? payload.channels : [];
+      if (setupState.open && setupState.group === "channels") setupRenderChannels();
+      break;
+    case "contact_uri":
+      setupState.lastContactUri = payload || null;
+      if (setupState.open && setupState.group === "contacts") setupRenderContacts();
+      break;
+    case "device_stats":
+      setupState.deviceStats = payload || null;
+      if (setupState.open && setupState.group === "device") setupRenderDevice();
+      break;
+    case "private_key":
+      setupState.exportedKey = payload?.key ?? payload;
+      if (setupState.open && setupState.group === "identity") setupRenderIdentity();
+      break;
+    case "private_key_imported":
+      if (setupState.open) setupSetStatus("Private key imported. Reboot the radio to apply.");
+      break;
+    case "device_meta_saved":
+      if (setupState.open) {
+        setupSetStatus("Saved to device.");
+        fetchJson("/api/device-meta").then((data) => { setupState.deviceMeta = data; }).catch(() => {});
+      }
+      break;
+    case "time_set":
+      if (setupState.open) setupSetStatus("Device clock synced.");
+      break;
+    case "rebooting":
+      if (setupState.open) setupSetStatus("Radio rebooting...");
+      break;
+    case "factory_reset_done":
+      if (setupState.open) setupSetStatus("Factory reset done.");
+      break;
+    case "advert_sent":
+      if (setupState.open) setupSetStatus(payload?.flood ? "Flood advert sent." : "Zero-hop advert sent.");
+      break;
+    case "contact_shared":
+      if (setupState.open) setupSetStatus(payload?.ok ? "Contact shared." : "Contact share failed.");
+      break;
+    case "path_reset":
+      if (setupState.open) {
+        setupSetStatus(`Path reset for ${String(payload?.contactId || "").slice(0, 8)}.`);
+        if (setupState.group === "contacts") setupRenderGroup();
+      }
+      break;
+    case "path":
+      if (setupState.open) {
+        const pathWho = String(payload?.contactId || "").slice(0, 8);
+        setupSetStatus(payload?.ok === false
+          ? `Path discovery failed for ${pathWho}.`
+          : `Path updated for ${pathWho}.`);
+        if (setupState.group === "contacts") setupRenderGroup();
+      }
+      break;
+    case "telemetry":
+      if (setupState.open) {
+        const who = payload?.name || String(payload?.contactId || "").slice(0, 8);
+        setupSetStatus(payload?.ok ? `Telemetry received from ${who}.` : `Telemetry failed for ${who}.`);
+      }
+      break;
+    case "pending_contact":
+      if (setupState.open) setupSetStatus(`Pending contact: ${payload?.name || String(payload?.id || "").slice(0, 8)} (manual-add mode).`);
+      break;
+    case "advert":
+      // Contacts refresh follows via the nodes event; nothing to do here.
+      break;
+    case "node_status":
+      adminHandleNodeStatusEvent(payload);
+      if (setupState.open) setupSetStatus(payload?.ok ? "Node status received (see log)." : "Node status request failed.");
+      break;
+    case "admin_session":
+      adminHandleSessionEvent(payload);
+      if (setupState.open) {
+        setupSetStatus(payload?.loggedOut
+          ? "Admin logged out."
+          : (payload?.success ? `Admin login OK${payload?.isAdmin ? " (admin)" : ""}.` : "Admin login failed."));
+      }
+      break;
+    case "admin_cmd_sent":
+      adminHandleCmdSentEvent(payload);
+      if (setupState.open) setupSetStatus(payload?.ok ? "Admin command sent." : "Admin command failed.");
+      break;
+    case "admin_reply":
+      // Replies also land in the server log; the admin console renders them live.
+      adminHandleReplyEvent(payload);
+      break;
+    default:
+      break;
+  }
+}
+
+/* ---- open/close + keyboard nav ---- */
+if (setupCloseButton) {
+  setupCloseButton.addEventListener("click", closeSetupScreen);
+}
+
+document.addEventListener("keydown", (event) => {
+  if (!setupState.open) return;
+  const tag = String(event.target?.tagName || "").toLowerCase();
+  const inField = tag === "input" || tag === "textarea" || tag === "select";
+
+  if (event.key === "Escape") {
+    event.preventDefault();
+    event.stopPropagation();
+    if (inField) {
+      event.target.blur();
+      return;
+    }
+    if (setupState.group) {
+      setupExitGroup();
+    } else {
+      closeSetupScreen();
+    }
+    return;
+  }
+  if (inField || setupState.group) return;
+
+  if (event.key === "ArrowUp") {
+    event.preventDefault();
+    setupState.cursor = (setupState.cursor + SETUP_GROUPS.length - 1) % SETUP_GROUPS.length;
+    setupRenderMenu();
+  } else if (event.key === "ArrowDown") {
+    event.preventDefault();
+    setupState.cursor = (setupState.cursor + 1) % SETUP_GROUPS.length;
+    setupRenderMenu();
+  } else if (event.key === "Enter") {
+    event.preventDefault();
+    setupEnterGroup(SETUP_GROUPS[setupState.cursor].id);
+  }
+}, true);
+
+/* ============================================================
+   Remote admin console - terminal panel for repeater/room nodes
+   ============================================================ */
+const adminConsoleEl = document.getElementById("adminConsole");
+const adminConsoleTargetEl = document.getElementById("adminConsoleTarget");
+const adminConsoleCloseBtn = document.getElementById("adminConsoleClose");
+const adminLoginView = document.getElementById("adminLoginView");
+const adminLoginWho = document.getElementById("adminLoginWho");
+const adminLoginForm = document.getElementById("adminLoginForm");
+const adminLoginPassword = document.getElementById("adminLoginPassword");
+const adminLoginStatus = document.getElementById("adminLoginStatus");
+const adminTermView = document.getElementById("adminTermView");
+const adminTermChips = document.getElementById("adminTermChips");
+const adminTermScroll = document.getElementById("adminTermScroll");
+const adminTermConfirmSlot = document.getElementById("adminTermConfirmSlot");
+const adminTermForm = document.getElementById("adminTermForm");
+const adminTermInput = document.getElementById("adminTermInput");
+const adminLogoutButton = document.getElementById("adminLogoutButton");
+
+const adminConsoleState = {
+  open: false,
+  contactId: "",
+  label: "",
+  stage: "login", // login | pending | terminal
+  history: [],
+  histIdx: -1,
+  draft: "",
+};
+
+function adminFindNode(contactId) {
+  return latestNodes.find((n) => getNodeAddress(n) === contactId) || null;
+}
+
+function adminShowStage(stage) {
+  adminConsoleState.stage = stage;
+  if (adminLoginView) adminLoginView.classList.toggle("hidden", stage === "terminal");
+  if (adminTermView) adminTermView.classList.toggle("hidden", stage !== "terminal");
+}
+
+function openAdminConsole(contactId) {
+  if (!adminConsoleEl) return;
+  const id = String(contactId || "").trim();
+  if (!id) return;
+  const node = adminFindNode(id);
+  adminConsoleState.open = true;
+  adminConsoleState.contactId = id;
+  adminConsoleState.label = node ? getNodeDisplayLabel(node) : id.slice(0, 8);
+  adminConsoleState.history = [];
+  adminConsoleState.histIdx = -1;
+  adminConsoleState.draft = "";
+  if (adminConsoleTargetEl) adminConsoleTargetEl.textContent = adminConsoleState.label;
+  if (adminLoginWho) adminLoginWho.textContent = adminConsoleState.label;
+  if (adminLoginStatus) {
+    adminLoginStatus.textContent = "";
+    adminLoginStatus.classList.remove("is-denied");
+  }
+  if (adminLoginPassword) adminLoginPassword.value = "";
+  if (adminTermScroll) adminTermScroll.innerHTML = "";
+  if (adminTermConfirmSlot) adminTermConfirmSlot.innerHTML = "";
+  if (adminTermInput) adminTermInput.value = "";
+  adminShowStage("login");
+  adminConsoleEl.classList.remove("hidden");
+  adminConsoleEl.setAttribute("aria-hidden", "false");
+  if (adminLoginPassword) adminLoginPassword.focus();
+}
+
+function closeAdminConsole() {
+  if (!adminConsoleEl) return;
+  adminConsoleState.open = false;
+  adminConsoleState.contactId = "";
+  adminConsoleEl.classList.add("hidden");
+  adminConsoleEl.setAttribute("aria-hidden", "true");
+}
+
+function adminAppendLine(text, kind = "in") {
+  if (!adminTermScroll) return;
+  const line = document.createElement("div");
+  line.className = `admin-term-line admin-term-line--${kind}`;
+  line.textContent = String(text ?? "");
+  adminTermScroll.appendChild(line);
+  // Cap scrollback so long sessions stay light.
+  while (adminTermScroll.children.length > 600) {
+    adminTermScroll.removeChild(adminTermScroll.firstChild);
+  }
+  adminTermScroll.scrollTop = adminTermScroll.scrollHeight;
+}
+
+async function adminSendCommand(command) {
+  const cmd = String(command || "").trim();
+  if (!cmd || !adminConsoleState.contactId) return;
+  adminAppendLine(`> ${cmd}`, "out");
+  if (adminConsoleState.history[adminConsoleState.history.length - 1] !== cmd) {
+    adminConsoleState.history.push(cmd);
+    if (adminConsoleState.history.length > 100) adminConsoleState.history.shift();
+  }
+  adminConsoleState.histIdx = -1;
+  adminConsoleState.draft = "";
+  try {
+    await meshCommand("admin_cmd", { contactId: adminConsoleState.contactId, command: cmd });
+  } catch (error) {
+    adminAppendLine(`SEND FAILED: ${error.message}`, "err");
+  }
+}
+
+async function adminRequestStats() {
+  if (!adminConsoleState.contactId) return;
+  adminAppendLine("> [STATS] requesting node status...", "out");
+  try {
+    await meshCommand("request_status", { contactId: adminConsoleState.contactId });
+  } catch (error) {
+    adminAppendLine(`STATUS REQUEST FAILED: ${error.message}`, "err");
+  }
+}
+
+function adminConfirmReboot() {
+  if (!adminTermConfirmSlot) return;
+  adminTermConfirmSlot.innerHTML = "";
+  adminTermConfirmSlot.appendChild(setupConfirmBlock(
+    `REBOOT ${adminConsoleState.label}?`,
+    "YES, REBOOT",
+    () => adminSendCommand("reboot"),
+  ));
+}
+
+const ADMIN_QUICK_COMMANDS = [
+  { label: "VER", run: () => adminSendCommand("ver") },
+  { label: "NEIGHBORS", run: () => adminSendCommand("neighbors") },
+  { label: "GET RADIO", run: () => adminSendCommand("get radio") },
+  { label: "STATS", run: () => adminRequestStats() },
+  { label: "CLOCK SYNC", run: () => adminSendCommand("clock sync") },
+  { label: "ADVERT", run: () => adminSendCommand("advert") },
+  { label: "REBOOT", run: () => adminConfirmReboot(), danger: true },
+];
+
+if (adminTermChips) {
+  ADMIN_QUICK_COMMANDS.forEach((entry) => {
+    adminTermChips.appendChild(setupButton(entry.label, entry.run, entry.danger ? "danger" : ""));
+  });
+}
+
+if (adminLoginForm) {
+  adminLoginForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!adminConsoleState.contactId || adminConsoleState.stage === "pending") return;
+    const password = adminLoginPassword ? adminLoginPassword.value : "";
+    adminConsoleState.stage = "pending";
+    if (adminLoginStatus) {
+      adminLoginStatus.textContent = "AUTHENTICATING OVER MESH...";
+      adminLoginStatus.classList.remove("is-denied");
+    }
+    try {
+      await meshCommand("admin_login", { contactId: adminConsoleState.contactId, password });
+    } catch (error) {
+      adminConsoleState.stage = "login";
+      if (adminLoginStatus) adminLoginStatus.textContent = `LOGIN SEND FAILED: ${error.message}`;
+    }
+  });
+}
+
+if (adminTermForm) {
+  adminTermForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    if (!adminTermInput) return;
+    const cmd = adminTermInput.value;
+    adminTermInput.value = "";
+    adminSendCommand(cmd);
+  });
+}
+
+if (adminTermInput) {
+  adminTermInput.addEventListener("keydown", (event) => {
+    const history = adminConsoleState.history;
+    if (event.key === "ArrowUp") {
+      if (!history.length) return;
+      event.preventDefault();
+      if (adminConsoleState.histIdx === -1) {
+        adminConsoleState.draft = adminTermInput.value;
+        adminConsoleState.histIdx = history.length - 1;
+      } else if (adminConsoleState.histIdx > 0) {
+        adminConsoleState.histIdx -= 1;
+      }
+      adminTermInput.value = history[adminConsoleState.histIdx] || "";
+    } else if (event.key === "ArrowDown") {
+      if (adminConsoleState.histIdx === -1) return;
+      event.preventDefault();
+      if (adminConsoleState.histIdx < history.length - 1) {
+        adminConsoleState.histIdx += 1;
+        adminTermInput.value = history[adminConsoleState.histIdx] || "";
+      } else {
+        adminConsoleState.histIdx = -1;
+        adminTermInput.value = adminConsoleState.draft || "";
+      }
+    }
+  });
+}
+
+if (adminLogoutButton) {
+  adminLogoutButton.addEventListener("click", async () => {
+    const id = adminConsoleState.contactId;
+    closeAdminConsole();
+    if (id) {
+      try { await meshCommand("admin_logout", { contactId: id }); } catch {}
+    }
+  });
+}
+
+if (adminConsoleCloseBtn) {
+  adminConsoleCloseBtn.addEventListener("click", closeAdminConsole);
+}
+
+/* ---- SSE handlers (called from setupHandleSseEvent) ---- */
+function adminHandleSessionEvent(payload) {
+  const contactId = String(payload?.contactId || "");
+  if (contactId) {
+    if (payload?.success) roomSessions.add(contactId);
+    else roomSessions.delete(contactId);
+  }
+  handleRoomSessionEvent(payload);
+  if (!adminConsoleState.open || contactId !== adminConsoleState.contactId) return;
+  if (payload?.success) {
+    adminShowStage("terminal");
+    adminAppendLine(`ACCESS GRANTED - ${payload?.isAdmin ? "ADMIN" : "GUEST"} SESSION @ ${adminConsoleState.label}`, "sys");
+    if (payload?.permissions != null) {
+      adminAppendLine(`PERMISSIONS: ${typeof payload.permissions === "object" ? JSON.stringify(payload.permissions) : payload.permissions}`, "sys");
+    }
+    adminAppendLine("TYPE A CLI COMMAND OR USE THE CHIPS ABOVE.", "sys");
+    if (adminTermInput) adminTermInput.focus();
+  } else if (payload?.loggedOut) {
+    if (adminConsoleState.stage === "terminal") {
+      adminAppendLine("SESSION CLOSED - LOGGED OUT", "err");
+      adminShowStage("login");
+      if (adminLoginStatus) adminLoginStatus.textContent = "LOGGED OUT.";
+    }
+  } else {
+    adminShowStage("login");
+    if (adminLoginStatus) {
+      adminLoginStatus.textContent = "ACCESS DENIED";
+      adminLoginStatus.classList.remove("is-denied");
+      void adminLoginStatus.offsetWidth; // restart blink animation
+      adminLoginStatus.classList.add("is-denied");
+    }
+    if (adminLoginPassword) {
+      adminLoginPassword.value = "";
+      adminLoginPassword.focus();
+    }
+  }
+}
+
+function adminHandleCmdSentEvent(payload) {
+  if (!adminConsoleState.open) return;
+  if (String(payload?.contactId || "") !== adminConsoleState.contactId) return;
+  if (!payload?.ok) {
+    adminAppendLine(`COMMAND NOT ACCEPTED BY RADIO: ${payload?.command || ""}`, "err");
+  }
+}
+
+function adminHandleReplyEvent(payload) {
+  if (!adminConsoleState.open || adminConsoleState.stage !== "terminal") return;
+  const sender = String(payload?.sender || "");
+  const text = String(payload?.text || "");
+  if (!text) return;
+  const lines = text.split(/\r?\n/);
+  if (sender === adminConsoleState.contactId) {
+    lines.forEach((line) => adminAppendLine(line, "in"));
+  } else {
+    const who = payload?.senderName || sender.slice(0, 8) || "?";
+    lines.forEach((line) => adminAppendLine(`[${who}] ${line}`, "other"));
+  }
+}
+
+function adminFormatNodeStatusLines(status) {
+  const lines = [];
+  const seconds = (v) => {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return String(v);
+    if (n >= 86400) return `${Math.floor(n / 86400)}d ${Math.floor((n % 86400) / 3600)}h`;
+    if (n >= 3600) return `${Math.floor(n / 3600)}h ${Math.floor((n % 3600) / 60)}m`;
+    if (n >= 60) return `${Math.floor(n / 60)}m ${Math.floor(n % 60)}s`;
+    return `${n}s`;
+  };
+  Object.entries(status || {}).forEach(([key, value]) => {
+    if (value == null || typeof value === "object") return;
+    const k = String(key);
+    const label = k.toUpperCase().replace(/_/g, " ");
+    let shown = String(value);
+    if (/^bat/i.test(k)) shown = `${value} mV`;
+    else if (/uptime/i.test(k)) shown = seconds(value);
+    else if (/airtime/i.test(k)) shown = seconds(value);
+    else if (/snr/i.test(k)) shown = `${value} dB`;
+    else if (/rssi|noise/i.test(k)) shown = `${value} dBm`;
+    lines.push(`${label.padEnd(18, " ")} ${shown}`);
+  });
+  return lines;
+}
+
+function adminHandleNodeStatusEvent(payload) {
+  if (!adminConsoleState.open || adminConsoleState.stage !== "terminal") return;
+  if (String(payload?.contactId || "") !== adminConsoleState.contactId) return;
+  if (!payload?.ok || !payload.status) {
+    adminAppendLine("STATUS REQUEST FAILED OR TIMED OUT", "err");
+    return;
+  }
+  adminAppendLine(`--- NODE STATUS: ${adminConsoleState.label} ---`, "sys");
+  adminFormatNodeStatusLines(payload.status).forEach((line) => adminAppendLine(line, "in"));
+}
+
+/* ============================================================
+   Room servers as chat threads (JOIN / session notices)
+   ============================================================ */
+const chatRoomJoinButton = document.getElementById("chatRoomJoinButton");
+const chatRoomJoinBar = document.getElementById("chatRoomJoinBar");
+const chatRoomJoinPassword = document.getElementById("chatRoomJoinPassword");
+const chatRoomJoinSubmit = document.getElementById("chatRoomJoinSubmit");
+const chatRoomJoinCancel = document.getElementById("chatRoomJoinCancel");
+const chatRoomJoinStatus = document.getElementById("chatRoomJoinStatus");
+
+function updateChatRoomJoinUi() {
+  if (!chatRoomJoinButton) return;
+  const peerId = String(chatState.selectedPeer || "");
+  const node = peerId ? latestNodes.find((n) => getNodeAddress(n) === peerId) : null;
+  const show = Boolean(node && isRoomNode(node) && !roomSessions.has(peerId));
+  chatRoomJoinButton.classList.toggle("hidden", !show);
+  if (!show && chatRoomJoinBar) {
+    chatRoomJoinBar.classList.add("hidden");
+  }
+}
+
+function appendRoomJoinNotice(peerId) {
+  const text = roomJoinNotices.get(String(peerId || ""));
+  if (!text || !chatReplyText) return;
+  const line = document.createElement("div");
+  line.className = "chat-room-notice";
+  line.textContent = `*** ${text} ***`;
+  chatReplyText.appendChild(line);
+  chatReplyText.scrollTop = chatReplyText.scrollHeight;
+}
+
+function setRoomJoinStatus(text, denied = false) {
+  if (!chatRoomJoinStatus) return;
+  chatRoomJoinStatus.textContent = String(text || "");
+  chatRoomJoinStatus.classList.toggle("is-denied", Boolean(denied));
+}
+
+function handleRoomSessionEvent(payload) {
+  const contactId = String(payload?.contactId || "");
+  const node = contactId ? latestNodes.find((n) => getNodeAddress(n) === contactId) : null;
+  if (node && isRoomNode(node)) {
+    if (payload?.success) {
+      roomJoinNotices.set(contactId, "JOINED - SERVER WILL PUSH UNSEEN MESSAGES");
+      if (roomJoinPendingId === contactId) {
+        roomJoinPendingId = "";
+        setRoomJoinStatus("");
+        if (chatRoomJoinBar) chatRoomJoinBar.classList.add("hidden");
+        if (chatRoomJoinPassword) chatRoomJoinPassword.value = "";
+      }
+      if (chatState.mode === CHAT_MODE_DM && chatState.selectedPeer === contactId) {
+        renderDmChat();
+      }
+    } else if (payload?.loggedOut) {
+      roomJoinNotices.delete(contactId);
+    } else if (roomJoinPendingId === contactId) {
+      roomJoinPendingId = "";
+      setRoomJoinStatus("ACCESS DENIED", true);
+    }
+  }
+  updateChatRoomJoinUi();
+}
+
+async function submitRoomJoin() {
+  const peerId = String(chatState.selectedPeer || "");
+  if (!peerId) return;
+  const password = chatRoomJoinPassword ? chatRoomJoinPassword.value : "";
+  roomJoinPendingId = peerId;
+  setRoomJoinStatus("JOINING...");
+  try {
+    await meshCommand("admin_login", { contactId: peerId, password });
+  } catch (error) {
+    roomJoinPendingId = "";
+    setRoomJoinStatus(`JOIN FAILED: ${error.message}`, true);
+  }
+}
+
+if (chatRoomJoinButton) {
+  chatRoomJoinButton.addEventListener("click", () => {
+    if (!chatRoomJoinBar) return;
+    chatRoomJoinBar.classList.remove("hidden");
+    setRoomJoinStatus("");
+    if (chatRoomJoinPassword) chatRoomJoinPassword.focus();
+  });
+}
+
+if (chatRoomJoinSubmit) {
+  chatRoomJoinSubmit.addEventListener("click", submitRoomJoin);
+}
+
+if (chatRoomJoinPassword) {
+  chatRoomJoinPassword.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      submitRoomJoin();
+    }
+  });
+}
+
+if (chatRoomJoinCancel) {
+  chatRoomJoinCancel.addEventListener("click", () => {
+    if (chatRoomJoinBar) chatRoomJoinBar.classList.add("hidden");
+    setRoomJoinStatus("");
+  });
 }
