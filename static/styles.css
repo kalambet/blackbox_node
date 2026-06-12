@@ -256,20 +256,27 @@ body {
   font-family: "Press Start Local", monospace;
   font-size: 8px;
   text-transform: uppercase;
-  background: #1f2329;
+  background: var(--bg-2);
   color: var(--muted);
-  border: 1px solid var(--edge-dark);
+  border-top: 2px solid var(--edge-dark);
+  border-left: 2px solid var(--edge-dark);
+  border-right: 2px solid var(--edge-light);
+  border-bottom: 2px solid var(--edge-light);
+  cursor: pointer;
 }
 
 .chat-mode-btn.is-active {
-  background: #3c5367;
-  color: #f3f8ff;
-  border-color: var(--edge-light);
+  background: var(--panel);
+  color: #ffffff;
+  border-top: 2px solid var(--edge-light);
+  border-left: 2px solid var(--edge-light);
+  border-right: 2px solid var(--edge-dark);
+  border-bottom: 2px solid var(--edge-dark);
 }
 
 @keyframes dm-unread-glow {
-  0%, 100% { color: var(--muted); border-color: var(--edge-dark); }
-  50% { color: #7ecfaa; border-color: #4a9a74; }
+  0%, 100% { color: var(--muted); }
+  50% { color: #7ecfaa; }
 }
 
 .chat-mode-btn.has-unread {
@@ -315,21 +322,26 @@ body {
   font-size: 7px;
   line-height: 1;
   text-transform: uppercase;
-  background: #1f2329;
+  background: var(--bg-2);
   color: var(--muted);
-  border: 1px solid var(--edge-dark);
+  border-top: 2px solid var(--edge-dark);
+  border-left: 2px solid var(--edge-dark);
+  border-right: 2px solid var(--edge-light);
+  border-bottom: 2px solid var(--edge-light);
   cursor: pointer;
 }
 
 .chat-peer-filter-btn:hover {
-  background: #24313d;
   color: var(--ink);
 }
 
 .chat-peer-filter-btn.is-active {
-  background: #35516a;
-  color: #f3f8ff;
-  border-color: var(--edge-light);
+  background: var(--panel);
+  color: #ffffff;
+  border-top: 2px solid var(--edge-light);
+  border-left: 2px solid var(--edge-light);
+  border-right: 2px solid var(--edge-dark);
+  border-bottom: 2px solid var(--edge-dark);
 }
 
 .chat-peer-dropdown {
@@ -418,13 +430,15 @@ body {
 
 .chat-peer-item-text {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  align-items: center;
   flex: 1;
   min-width: 0;
   overflow: hidden;
 }
 
 .chat-peer-item-name {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1582,9 +1596,12 @@ body.is-resizing-panels {
   font-family: "Press Start Local", monospace;
   font-size: 7px;
   line-height: 1;
-  background: #252b32;
+  background: var(--bg-2);
   color: #6a7a8a;
-  border: 1px solid #3a4450;
+  border-top: 2px solid var(--edge-dark);
+  border-left: 2px solid var(--edge-dark);
+  border-right: 2px solid var(--edge-light);
+  border-bottom: 2px solid var(--edge-light);
   cursor: pointer;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -1595,14 +1612,16 @@ body.is-resizing-panels {
 }
 
 .nodes-map-toggle-btn:hover {
-  background: #2e3a45;
   color: #c8d0d8;
 }
 
 .nodes-map-toggle-btn--active {
-  background: #1a3040;
+  background: var(--panel);
   color: #4a9eff;
-  border-color: #4a9eff;
+  border-top: 2px solid var(--edge-light);
+  border-left: 2px solid var(--edge-light);
+  border-right: 2px solid var(--edge-dark);
+  border-bottom: 2px solid var(--edge-dark);
 }
 
 .nodes-map-hops-control {
@@ -1664,11 +1683,14 @@ body.is-resizing-panels {
 /* Radius style toggle button */
 .nodes-map-style-btn {
   width: 28px;
-  height: 16px;
+  height: 18px;
   padding: 0;
-  border: 1px solid #3a4a55;
-  border-radius: 3px;
-  background: #1e2a35;
+  border-top: 2px solid var(--edge-light);
+  border-left: 2px solid var(--edge-light);
+  border-right: 2px solid var(--edge-dark);
+  border-bottom: 2px solid var(--edge-dark);
+  border-radius: 0;
+  background: var(--bg-2);
   cursor: pointer;
   position: relative;
   display: flex;
@@ -1704,8 +1726,14 @@ body.is-resizing-panels {
 }
 
 .nodes-map-style-btn:hover {
-  border-color: #5a7a8a;
-  background: #2a3a45;
+  background: var(--panel-2);
+}
+
+.nodes-map-style-btn:active {
+  border-top: 2px solid var(--edge-dark);
+  border-left: 2px solid var(--edge-dark);
+  border-right: 2px solid var(--edge-light);
+  border-bottom: 2px solid var(--edge-light);
 }
 
 .nodes-map-legend {
@@ -3241,16 +3269,25 @@ textarea,
   display: flex;
   align-items: center;
   justify-content: center;
-  background: transparent;
-  border: 1px solid rgba(160,190,220,0.25);
-  border-radius: 50%;
+  background: var(--panel);
+  border-top: 2px solid var(--edge-light);
+  border-left: 2px solid var(--edge-light);
+  border-right: 2px solid var(--edge-dark);
+  border-bottom: 2px solid var(--edge-dark);
+  border-radius: 0;
   color: var(--muted);
   cursor: pointer;
   transition: color 0.15s, border-color 0.15s;
 }
 .swap-info-btn:hover {
   color: var(--ink);
-  border-color: rgba(160,190,220,0.55);
+}
+
+.swap-info-btn:active {
+  border-top: 2px solid var(--edge-dark);
+  border-left: 2px solid var(--edge-dark);
+  border-right: 2px solid var(--edge-light);
+  border-bottom: 2px solid var(--edge-light);
 }
 
 
@@ -3731,9 +3768,12 @@ textarea,
 .wallet-token-copy-btn {
   font-size: 10px !important;
   padding: 3px 10px !important;
-  border-radius: 4px !important;
-  background: rgba(100,160,220,0.15) !important;
-  border: 1px solid rgba(100,160,220,0.25) !important;
+  border-radius: 0 !important;
+  background: var(--panel) !important;
+  border-top: 2px solid var(--edge-light) !important;
+  border-left: 2px solid var(--edge-light) !important;
+  border-right: 2px solid var(--edge-dark) !important;
+  border-bottom: 2px solid var(--edge-dark) !important;
   color: #8ab4cc !important;
   cursor: pointer;
   line-height: 1.4;
@@ -3741,8 +3781,14 @@ textarea,
 }
 
 .wallet-token-copy-btn:hover {
-  background: rgba(100,160,220,0.25) !important;
   color: #c0ddf0 !important;
+}
+
+.wallet-token-copy-btn:active {
+  border-top: 2px solid var(--edge-dark) !important;
+  border-left: 2px solid var(--edge-dark) !important;
+  border-right: 2px solid var(--edge-light) !important;
+  border-bottom: 2px solid var(--edge-light) !important;
 }
 
 .wallet-token-code {
@@ -5344,10 +5390,14 @@ textarea,
 /* --- node list extras (MeshCore contacts) --- */
 .node-type-chip {
   display: inline-block;
+  flex: 0 0 auto;
+  width: auto;
   font-family: "Press Start Local", monospace;
-  font-size: 6px;
-  padding: 2px 4px;
-  margin-right: 4px;
+  /* 6px pixel-font strokes antialias into unreadable grey on bright chips */
+  font-size: 8px;
+  line-height: 1;
+  padding: 3px 4px 2px;
+  margin-right: 5px;
   text-transform: uppercase;
   color: #0d0f11;
   background: #8a93a0;
@@ -5356,6 +5406,14 @@ textarea,
 
 .node-type-chip--chat { background: #6fbf8f; }
 .node-type-chip--repeater { background: #e8c030; }
+
+.chat-peer-item--repeater .chat-peer-item-name {
+  color: var(--muted);
+}
+
+.chat-peer-item--repeater:hover .chat-peer-item-name {
+  color: var(--ink);
+}
 .node-type-chip--room { background: #b08fe8; }
 .node-type-chip--sensor { background: #6fc3c9; }
 

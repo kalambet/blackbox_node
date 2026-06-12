@@ -409,6 +409,30 @@ class Bridge:
         emit("device_meta_saved", {})
         self.emit_status()
 
+    async def cmd_set_repeater_mode(self, payload: dict[str, Any]) -> None:
+        if (self.device_info or {}).get("repeat") is None:
+            emit_error("repeater mode requires companion firmware v9+")
+            return
+        enabled = bool(payload.get("enabled"))
+        info = self.mc.self_info or {}
+        freq = info.get("radio_freq")
+        bw = info.get("radio_bw")
+        sf = info.get("radio_sf")
+        cr = info.get("radio_cr")
+        if not freq or not bw or not sf or not cr:
+            emit_error("set_repeater_mode: current radio params unknown")
+            return
+        # The repeat flag rides on CMD_SET_RADIO_PARAMS as a trailing byte.
+        result = await self.mc.commands.set_radio(float(freq), float(bw), int(sf), int(cr), repeat=1 if enabled else 0)
+        if result is not None and result.is_error():
+            emit_error(f"set_repeater_mode failed: {result.payload} (frequency may not allow repeating)")
+            return
+        refreshed = await self.mc.commands.send_device_query()
+        if refreshed is not None and not refreshed.is_error():
+            self.device_info = dict(refreshed.payload or {})
+        emit("repeater_mode", {"enabled": bool((self.device_info or {}).get("repeat", enabled))})
+        self.emit_status()
+
     async def cmd_request_telemetry(self, payload: dict[str, Any]) -> None:
         contact_id = str(payload.get("contactId") or "")
         contact = resolve_contact(self.mc, contact_id)

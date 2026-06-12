@@ -4992,6 +4992,7 @@ function startBridge() {
             message.type === "channels" ||
             message.type === "device_stats" ||
             message.type === "node_status" ||
+            message.type === "repeater_mode" ||
             message.type === "time_set" ||
             message.type === "rebooting" ||
             message.type === "factory_reset_done" ||
@@ -5155,7 +5156,7 @@ const server = http.createServer(async (req, res) => {
         "request_self_telemetry", "trace_path", "path_discovery", "reset_path",
         "remove_contact", "share_contact", "export_contact", "import_contact",
         "add_pending_contact", "get_channels", "set_channel", "get_device_info",
-        "set_time", "reboot", "factory_reset", "export_private_key",
+        "set_repeater_mode", "set_time", "reboot", "factory_reset", "export_private_key",
         "import_private_key", "admin_login", "admin_logout", "admin_cmd",
         "request_status",
       ]);
@@ -5839,7 +5840,13 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === "GET" && req.url.startsWith("/static/")) {
-      const filePath = path.join(STATIC_DIR, req.url.replace("/static/", ""));
+      const requestedPath = decodeURIComponent(req.url.slice("/static/".length).split("?")[0]);
+      const filePath = path.resolve(STATIC_DIR, requestedPath);
+      if (!filePath.startsWith(path.resolve(STATIC_DIR) + path.sep)) {
+        res.writeHead(404);
+        res.end("Not found");
+        return;
+      }
 
       if (!fs.existsSync(filePath)) {
         res.writeHead(404);
@@ -5857,6 +5864,11 @@ const server = http.createServer(async (req, res) => {
       }[ext] || "application/octet-stream";
 
       const headers = { "Content-Type": contentType };
+      // App code must never be served stale: browsers heuristically cache
+      // responses without Cache-Control, which serves outdated app.js after updates.
+      if (ext === ".js" || ext === ".css" || ext === ".html") {
+        headers["Cache-Control"] = "no-cache";
+      }
       if (filePath.endsWith("map-sw.js")) headers["Service-Worker-Allowed"] = "/";
       res.writeHead(200, headers);
       fs.createReadStream(filePath).pipe(res);

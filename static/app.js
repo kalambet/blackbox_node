@@ -310,7 +310,9 @@ const chatState = {
   peerFilters: {
     unread: false,
     active: false,
-    online: true,
+    // MeshCore "online" = recent advert; contacts advertise rarely, so a
+    // reachable peer often looks offline. Default to showing everyone.
+    online: false,
   },
 };
 const cashuState = {
@@ -729,12 +731,12 @@ function getNodeSlashLabel(node) {
   return [short, long, addr].filter(Boolean).join(" / ");
 }
 
-function getSelectableNodes() {
+function getSelectableNodes({ includeRepeaters = false } = {}) {
   const map = new Map();
   latestNodes.forEach((node) => {
     const address = getNodeAddress(node);
     if (!address || map.has(address)) return;
-    if (String(node.contactType || "") === "repeater") return; // repeaters take admin CLI, not DMs
+    if (!includeRepeaters && String(node.contactType || "") === "repeater") return; // repeaters take admin CLI, not DMs
     map.set(address, node);
   });
   return sortNodesForUi(Array.from(map.values()));
@@ -865,14 +867,20 @@ async function toggleNodeFavorite(nodeId, favorite) {
 function renderChatPeerList() {
   const listEl = document.getElementById("chatPeerList");
   if (!listEl) return;
-  const nodes = getSelectableNodes();
+  // Repeaters are listed (greyed) so the picker visibly covers every contact,
+  // but they route to the admin console — MeshCore repeaters take no DMs.
+  const nodes = getSelectableNodes({ includeRepeaters: true });
   if (!nodes.length) {
     listEl.innerHTML = '<div class="chat-peer-empty">No nodes found</div>';
     return;
   }
   const filteredNodes = nodes.filter(passesChatPeerFilters);
   if (!filteredNodes.length) {
-    listEl.innerHTML = '<div class="chat-peer-empty">No nodes match filters</div>';
+    const activeFilters = Object.entries(chatState.peerFilters)
+      .filter(([, enabled]) => enabled)
+      .map(([name]) => name.toUpperCase())
+      .join(" + ");
+    listEl.innerHTML = `<div class="chat-peer-empty">No nodes match filters${activeFilters ? ` (${activeFilters})` : ""}</div>`;
     const activeNode = nodes.find((node) => getNodeAddress(node) === chatState.selectedPeer);
     if (chatPeerLabel) {
       chatPeerLabel.textContent = activeNode ? getNodeSlashLabel(activeNode) : "Select node";
@@ -884,28 +892,39 @@ function renderChatPeerList() {
   sorted.forEach((node) => {
     const addr = getNodeAddress(node);
     const label = getNodeDisplayLabel(node);
+    const isRepeater = String(node.contactType || "") === "repeater";
     const isActive = addr === chatState.selectedPeer;
     const hasUnread = unreadPeers.has(addr);
     const isFavorite = isFavoriteNode(node);
     const item = document.createElement("div");
-    item.className = "chat-peer-item" + (isActive ? " is-active" : "") + (isFavorite ? " is-favorite" : "");
+    item.className = "chat-peer-item" + (isActive ? " is-active" : "") + (isFavorite ? " is-favorite" : "") + (isRepeater ? " chat-peer-item--repeater" : "");
     item.dataset.peer = addr;
-    const roomChip = isRoomNode(node)
+    const typeChip = isRoomNode(node)
       ? `<span class="node-type-chip node-type-chip--room">ROOM</span>`
-      : "";
-    item.innerHTML = `<span class="chat-peer-item-text">${roomChip}<span class="chat-peer-item-name">${label}</span></span>` +
+      : isRepeater
+        ? `<span class="node-type-chip node-type-chip--repeater">RPT·ADM</span>`
+        : "";
+    item.innerHTML = `<span class="chat-peer-item-text">${typeChip}<span class="chat-peer-item-name">${label}</span></span>` +
       (isFavorite ? `<span class="node-favorite-indicator" title="Favorite"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l2.7 5.5 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.8 1-6.1-4.4-4.3 6.1-.9L12 3z"/></svg></span>` : "") +
       (hasUnread ? `<span class="chat-peer-unread" title="Unread messages"><svg width="14" height="11" viewBox="0 0 14 11" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="0.5" y="0.5" width="13" height="10" rx="1" stroke="currentColor"/><path d="M1 1l6 5 6-5" stroke="currentColor" stroke-linecap="round"/></svg></span>` : "");
-    item.addEventListener("click", () => {
-      unreadPeers.delete(addr);
-      updateDmTabUnreadGlow();
-      setChatPeerSelection(addr, { syncWallet: true, persist: true });
-      listEl.hidden = true;
-      renderChatPeerList();
-      if (chatState.mode === CHAT_MODE_DM) {
-        refreshActiveDmChat();
-      }
-    });
+    if (isRepeater) {
+      item.title = "Repeater — no direct messages; opens admin console";
+      item.addEventListener("click", () => {
+        listEl.hidden = true;
+        openAdminConsole(addr);
+      });
+    } else {
+      item.addEventListener("click", () => {
+        unreadPeers.delete(addr);
+        updateDmTabUnreadGlow();
+        setChatPeerSelection(addr, { syncWallet: true, persist: true });
+        listEl.hidden = true;
+        renderChatPeerList();
+        if (chatState.mode === CHAT_MODE_DM) {
+          refreshActiveDmChat();
+        }
+      });
+    }
     listEl.appendChild(item);
   });
   // Update trigger label
@@ -6386,10 +6405,21 @@ const SETUP_GROUPS = [
   { id: "advanced", label: "ADVANCED", desc: "telemetry / acks" },
 ];
 
+// Mirrors the non-deprecated entries of api.meshcore.nz/api/v1/config
+// (the source behind config.meshcore.io), as of 2026-06-11.
 const RADIO_PRESETS = [
-  { id: "EU", label: "EU/UK 869.525 SF11", frequency: 869.525, bandwidth: 250, spreadingFactor: 11, codingRate: 5 },
-  { id: "US", label: "USA/CA 910.525 SF10", frequency: 910.525, bandwidth: 250, spreadingFactor: 10, codingRate: 5 },
-  { id: "ANZ", label: "AUS/NZ 915.8 SF10", frequency: 915.8, bandwidth: 250, spreadingFactor: 10, codingRate: 5 },
+  { id: "EU_NARROW", label: "EU/UK 869.618 SF8 NARROW", frequency: 869.618, bandwidth: 62.5, spreadingFactor: 8, codingRate: 8 },
+  { id: "EU_433_LONG", label: "EU 433.650 SF11 LONG RANGE", frequency: 433.65, bandwidth: 250, spreadingFactor: 11, codingRate: 5 },
+  { id: "EU_433_NARROW", label: "EU 433.650 SF8 NARROW", frequency: 433.65, bandwidth: 62.5, spreadingFactor: 8, codingRate: 8 },
+  { id: "NL", label: "NETHERLANDS 869.618 SF7", frequency: 869.618, bandwidth: 62.5, spreadingFactor: 7, codingRate: 5 },
+  { id: "CZ", label: "CZECHIA 869.432 SF7 NARROW", frequency: 869.432, bandwidth: 62.5, spreadingFactor: 7, codingRate: 5 },
+  { id: "CH", label: "SWITZERLAND 869.618 SF8", frequency: 869.618, bandwidth: 62.5, spreadingFactor: 8, codingRate: 8 },
+  { id: "PT_868", label: "PORTUGAL 869.618 SF7", frequency: 869.618, bandwidth: 62.5, spreadingFactor: 7, codingRate: 6 },
+  { id: "PT_433", label: "PORTUGAL 433.375 SF9", frequency: 433.375, bandwidth: 62.5, spreadingFactor: 9, codingRate: 6 },
+  { id: "EU_LEGACY", label: "EU/UK 869.525 SF11 (DEPRECATED)", frequency: 869.525, bandwidth: 250, spreadingFactor: 11, codingRate: 5 },
+  { id: "US", label: "USA/CA 910.525 SF7", frequency: 910.525, bandwidth: 62.5, spreadingFactor: 7, codingRate: 5 },
+  { id: "ANZ", label: "AUS 915.8 SF10", frequency: 915.8, bandwidth: 250, spreadingFactor: 10, codingRate: 5 },
+  { id: "NZ", label: "NZ 917.375 SF11", frequency: 917.375, bandwidth: 250, spreadingFactor: 11, codingRate: 5 },
   { id: "CUSTOM", label: "CUSTOM" },
 ];
 
@@ -6924,6 +6954,50 @@ function setupRenderRadio() {
   powerSection.appendChild(sliderRow);
   powerSection.appendChild(setupEl("div", "setup-row-meta", `MAX ${maxTx} dBm (from device)`));
   root.appendChild(powerSection);
+
+  const repeatSection = setupEl("div", "setup-section");
+  repeatSection.appendChild(setupEl("div", "setup-section-label", "REPEATER MODE"));
+  const repeatSupported = (meta.deviceInfo || {}).repeat !== undefined;
+  let repeatEnabled = Boolean((meta.deviceInfo || {}).repeat);
+  const repeatToggle = setupEl("div", "setup-toggle");
+  const repeatOffBtn = setupEl("button", "", "OFF");
+  repeatOffBtn.type = "button";
+  const repeatOnBtn = setupEl("button", "", "ON");
+  repeatOnBtn.type = "button";
+  const applyRepeatToggle = () => {
+    repeatOffBtn.classList.toggle("is-active", !repeatEnabled);
+    repeatOnBtn.classList.toggle("is-active", repeatEnabled);
+  };
+  const sendRepeatMode = async (enabled) => {
+    if (!repeatSupported || enabled === repeatEnabled) return;
+    repeatEnabled = enabled;
+    applyRepeatToggle();
+    try {
+      await meshCommand("set_repeater_mode", { enabled });
+      setupSetStatus(`Repeater mode ${enabled ? "ON" : "OFF"} sent.`);
+    } catch (error) {
+      repeatEnabled = !enabled;
+      applyRepeatToggle();
+      setupSetStatus(`repeater mode failed: ${error.message}`);
+    }
+  };
+  repeatOffBtn.addEventListener("click", () => sendRepeatMode(false));
+  repeatOnBtn.addEventListener("click", () => sendRepeatMode(true));
+  repeatToggle.append(repeatOffBtn, repeatOnBtn);
+  applyRepeatToggle();
+  if (!repeatSupported) {
+    repeatOffBtn.disabled = true;
+    repeatOnBtn.disabled = true;
+  }
+  repeatSection.appendChild(repeatToggle);
+  repeatSection.appendChild(setupEl(
+    "div",
+    "setup-row-meta",
+    repeatSupported
+      ? "NODE RELAYS MESH TRAFFIC WHILE ON (MORE AIRTIME + POWER)"
+      : "REQUIRES COMPANION FIRMWARE V9+",
+  ));
+  root.appendChild(repeatSection);
 
   const advanced = setupEl("details", "setup-fold");
   advanced.appendChild(setupEl("summary", "", "ADVANCED TUNING"));
