@@ -33,9 +33,15 @@ const MUTINYNET_FAUCET_URL = "https://faucet.mutinynet.com";
 const SWAPS_FILE = path.join(DATA_DIR, "swaps.json");
 const PYDEPS_DIR = path.join(__dirname, "pydeps");
 const LLAMA_DIR = path.join(__dirname, "llama");
-const LLAMA_EXE = process.platform === "win32"
-  ? path.join(LLAMA_DIR, "llama-server.exe")
-  : (() => { try { return require("child_process").execSync("which llama-server", { encoding: "utf8" }).trim(); } catch { return path.join(LLAMA_DIR, "llama-server"); } })();
+const LLAMA_EXE = (() => {
+  const bundled = path.join(LLAMA_DIR, process.platform === "win32" ? "llama-server.exe" : "llama-server");
+  // Prefer the pinned bundled runtime: system installs (homebrew) can upgrade
+  // underneath us and break model compatibility.
+  if (fs.existsSync(bundled) || process.platform === "win32") {
+    return bundled;
+  }
+  try { return require("child_process").execSync("which llama-server", { encoding: "utf8" }).trim(); } catch { return bundled; }
+})();
 const MODELS_DIR = path.join(__dirname, "models");
 const LLM_HOST = "127.0.0.1";
 const LLM_PORT = (() => {
@@ -98,6 +104,15 @@ const CURATED_MODELS = [
     sizeBytes: 2910000000,
     family: "Pi Chat",
     notes: "Tier XL+ | about 2.7 GB | modern Qwen3.5 in a compact size, good balance for general chat.",
+  },
+  {
+    id: "qwen25-7b-q4km",
+    name: "Qwen2.5 7B Instruct Q4_K_M",
+    filename: "Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+    url: "https://huggingface.co/bartowski/Qwen2.5-7B-Instruct-GGUF/resolve/main/Qwen2.5-7B-Instruct-Q4_K_M.gguf?download=true",
+    sizeBytes: 4683074240,
+    family: "Agent",
+    notes: "Tier XXL | about 4.7 GB | reliable tool calling - recommended for agent commands like /wiki.",
   },
   {
     id: "qwen25-coder-05b-q4km",
@@ -2596,6 +2611,390 @@ function buildBatteryCommandContext() {
   };
 }
 
+// ===== Agent commands (plan.md Phase 6) ==================================
+// AgentCommand registry + pluggable KnowledgeSources. /wiki is plugin #1;
+// PreTix/PreTalx sources register the same way later.
+
+const AGENT_TOTAL_BUDGET_MS = 90000;
+const AGENT_SOURCE_TIMEOUT_MS = 8000;
+const AGENT_MAX_TOOL_HOPS = 3;
+const AGENT_EXTRACT_CHAR_BUDGET = 9000; // total chars of fetched content (~2.5k tokens)
+const AGENT_EXTRACT_PER_ARTICLE = 6000; // single article cap within the total budget
+const AGENT_MESH_MAX_TOKENS = 140;
+const AGENT_LOCAL_MAX_TOKENS = 450;
+
+function getKnowledgeSettings() {
+  const knowledge = appSettings.knowledge || {};
+  return {
+    wikipedia: {
+      enabled: knowledge.wikipedia?.enabled !== false,
+      lang: String(knowledge.wikipedia?.lang || "en"),
+    },
+  };
+}
+
+function stripHtmlTags(text) {
+  return String(text || "")
+    .replace(/<[^>]*>/g, "")
+    .replace(/&quot;/g, '"')
+    .replace(/&#0?39;|&apos;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+async function fetchJsonWithTimeout(url, timeoutMs = AGENT_SOURCE_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: { "User-Agent": "blackbox-node/1.0 (mesh dashboard agent)" },
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    return await response.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+const knowledgeSources = {
+  wikipedia: {
+    id: "wikipedia",
+    kind: "online",
+    label: "Wikipedia",
+    available() {
+      return getKnowledgeSettings().wikipedia.enabled;
+    },
+    async search(query, limit = 4) {
+      const lang = getKnowledgeSettings().wikipedia.lang;
+      const merged = new Map();
+      // Title prefix match first: full-text search ranks tangents above the
+      // obvious article for entity questions ("LoRa" loses to "Ring modulation").
+      try {
+        const osUrl = `https://${lang}.wikipedia.org/w/api.php?action=opensearch&search=${encodeURIComponent(query)}&limit=${limit}&format=json`;
+        const os = await fetchJsonWithTimeout(osUrl);
+        const titles = Array.isArray(os?.[1]) ? os[1] : [];
+        const descriptions = Array.isArray(os?.[2]) ? os[2] : [];
+        titles.forEach((title, index) => {
+          merged.set(title, { title, snippet: stripHtmlTags(descriptions[index] || ""), ref: title });
+        });
+      } catch {}
+      try {
+        const srUrl = `https://${lang}.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&srlimit=${limit}&format=json&utf8=1`;
+        const data = await fetchJsonWithTimeout(srUrl);
+        for (const entry of data?.query?.search || []) {
+          const title = String(entry.title || "");
+          if (!merged.has(title)) {
+            merged.set(title, { title, snippet: stripHtmlTags(entry.snippet), ref: title });
+          }
+        }
+      } catch {}
+      return Array.from(merged.values()).slice(0, limit);
+    },
+    async fetch(ref) {
+      const lang = getKnowledgeSettings().wikipedia.lang;
+      const url = `https://${lang}.wikipedia.org/w/api.php?action=query&prop=extracts&explaintext=1&redirects=1&titles=${encodeURIComponent(ref)}&format=json&utf8=1`;
+      const data = await fetchJsonWithTimeout(url);
+      const pages = data?.query?.pages || {};
+      const page = Object.values(pages)[0] || {};
+      return {
+        title: String(page.title || ref),
+        text: String(page.extract || "").trim(),
+      };
+    },
+  },
+};
+
+const agentCommands = [
+  {
+    name: "wiki",
+    helpText: "/wiki <question> - answer from Wikipedia",
+    sources: ["wikipedia"],
+    synthesisPrompt(surface) {
+      return [
+        "You answer questions using ONLY the supplied Wikipedia context.",
+        "If the context does not contain the answer, say so plainly - NEVER fill gaps from your own memory.",
+        "Do not invent facts. Cite the article title you used.",
+        surface === "mesh"
+          ? "Reply in at most 2 short sentences (under 300 characters total) - the reply travels over a low-bandwidth radio."
+          : "Reply concisely in a short paragraph.",
+      ].join(" ");
+    },
+    fallback(results) {
+      const top = (results || [])[0];
+      if (!top) {
+        return "No Wikipedia results found.";
+      }
+      return trimResponse(`${top.title}: ${top.snippet || "no summary available"} (Wikipedia)`);
+    },
+  },
+];
+
+function getAgentCommand(commandName) {
+  const name = String(commandName || "").replace(/^\//, "");
+  return agentCommands.find((command) => command.name === name) || null;
+}
+
+function agentHelpLines() {
+  return agentCommands
+    .filter((command) => command.sources.some((id) => knowledgeSources[id]?.available()))
+    .map((command) => command.helpText);
+}
+
+async function agentLlmChat(messages, { maxTokens, tools = undefined, jsonSchema = undefined } = {}) {
+  const body = {
+    model: currentModelName,
+    messages,
+    temperature: 0.3,
+    top_p: 0.9,
+    max_tokens: maxTokens,
+    stream: false,
+  };
+  if (tools) {
+    body.tools = tools;
+    body.tool_choice = "auto";
+  }
+  if (jsonSchema) {
+    body.response_format = { type: "json_schema", json_schema: { name: "agent", schema: jsonSchema } };
+  }
+  const response = await fetch(`${LLM_BASE_URL}/v1/chat/completions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    throw new Error(`LLM HTTP ${response.status}`);
+  }
+  const data = await response.json();
+  return data.choices?.[0]?.message || {};
+}
+
+function buildAgentTools(command) {
+  const tools = [];
+  for (const sourceId of command.sources) {
+    const source = knowledgeSources[sourceId];
+    if (!source || !source.available()) continue;
+    tools.push({
+      type: "function",
+      function: {
+        name: `search_${source.id}`,
+        description: `Search ${source.label} for relevant entries. Returns titles and snippets.`,
+        parameters: {
+          type: "object",
+          properties: { query: { type: "string", description: "short search query" } },
+          required: ["query"],
+        },
+      },
+    });
+    tools.push({
+      type: "function",
+      function: {
+        name: `fetch_${source.id}`,
+        description: `Fetch the full text of a ${source.label} entry by its exact title.`,
+        parameters: {
+          type: "object",
+          properties: { ref: { type: "string", description: "exact entry title from search results" } },
+          required: ["ref"],
+        },
+      },
+    });
+  }
+  return tools;
+}
+
+async function executeAgentTool(command, name, args, collected) {
+  for (const sourceId of command.sources) {
+    const source = knowledgeSources[sourceId];
+    if (!source) continue;
+    if (name === `search_${source.id}`) {
+      const results = await source.search(String(args.query || ""), 4);
+      collected.results.push(...results);
+      return JSON.stringify(results);
+    }
+    if (name === `fetch_${source.id}`) {
+      const article = await source.fetch(String(args.ref || ""));
+      // Cap each article so one long page can't starve the next fetch.
+      const remaining = Math.min(AGENT_EXTRACT_PER_ARTICLE, AGENT_EXTRACT_CHAR_BUDGET - collected.fetchedChars);
+      const text = article.text.slice(0, Math.max(0, remaining));
+      collected.fetchedChars += text.length;
+      collected.fetched.push(article.title);
+      return JSON.stringify({ title: article.title, text });
+    }
+  }
+  return JSON.stringify({ error: `unknown tool ${name}` });
+}
+
+// Self-calibrating per model: tool mode is attempted once; if the model never
+// emits a tool call, the result is cached and we use the pipeline from then on.
+const agentToolModeCache = new Map();
+
+async function runAgentToolLoop(command, question, surface, deadline, collected) {
+  const tools = buildAgentTools(command);
+  if (!tools.length) {
+    throw new Error("no knowledge sources available");
+  }
+  const messages = [
+    { role: "system", content: `${command.synthesisPrompt(surface)} Use the provided tools to find the answer before responding.` },
+    { role: "user", content: question },
+  ];
+  let sawToolCall = false;
+  for (let hop = 0; hop <= AGENT_MAX_TOOL_HOPS; hop += 1) {
+    if (Date.now() > deadline) break;
+    const message = await agentLlmChat(messages, {
+      maxTokens: surface === "mesh" ? AGENT_MESH_MAX_TOKENS : AGENT_LOCAL_MAX_TOKENS,
+      tools,
+    });
+    const toolCalls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
+    if (!toolCalls.length) {
+      if (!sawToolCall) {
+        // Model ignored the tools entirely - mark it pipeline-only.
+        agentToolModeCache.set(currentModelName, false);
+        throw new Error("model did not use tools");
+      }
+      return String(message.content || "").trim();
+    }
+    sawToolCall = true;
+    agentToolModeCache.set(currentModelName, true);
+    messages.push(message);
+    for (const call of toolCalls) {
+      let args = {};
+      try { args = JSON.parse(call.function?.arguments || "{}"); } catch {}
+      let result;
+      try {
+        result = await executeAgentTool(command, call.function?.name, args, collected);
+      } catch (error) {
+        result = JSON.stringify({ error: error.message });
+      }
+      messages.push({ role: "tool", tool_call_id: call.id, content: result });
+    }
+  }
+  throw new Error("agent budget exhausted");
+}
+
+async function runAgentPipeline(command, question, surface, deadline, collected) {
+  const sources = command.sources.map((id) => knowledgeSources[id]).filter((s) => s && s.available());
+  if (!sources.length) {
+    throw new Error("no knowledge sources available");
+  }
+  let query = question;
+  try {
+    const rewrite = await agentLlmChat([
+      { role: "system", content: "Extract the main subject/topic of the user's question as 1-4 words suitable for an encyclopedia lookup (e.g. 'who invented LoRa modulation?' -> 'LoRa'). Reply with ONLY those words, nothing else." },
+      { role: "user", content: question },
+    ], { maxTokens: 24 });
+    const candidate = String(rewrite.content || "").trim().split("\n")[0].replace(/["']/g, "");
+    if (candidate && candidate.length <= 80) {
+      query = candidate;
+      collected.query = candidate;
+    }
+  } catch {}
+
+  for (const source of sources) {
+    if (Date.now() > deadline) break;
+    let results = await source.search(query, 4);
+    if (!results.length && query !== question) {
+      results = await source.search(question, 4);
+    }
+    if (!results.length) continue;
+    // Entity boost: a result whose title literally appears in the question is
+    // almost certainly the article the user means.
+    const questionLower = question.toLowerCase();
+    results.sort((a, b) => {
+      const aHit = questionLower.includes(a.title.toLowerCase()) ? 0 : 1;
+      const bHit = questionLower.includes(b.title.toLowerCase()) ? 0 : 1;
+      return aHit - bHit;
+    });
+    collected.results.push(...results);
+    const context = [];
+    for (const result of results.slice(0, 3)) {
+      if (Date.now() > deadline || context.length >= 2) break;
+      try {
+        const article = await source.fetch(result.ref);
+        if (collected.fetched.includes(article.title)) continue; // redirect dupe
+        const remaining = Math.min(AGENT_EXTRACT_PER_ARTICLE, AGENT_EXTRACT_CHAR_BUDGET - collected.fetchedChars);
+        if (remaining <= 0) break;
+        const text = article.text.slice(0, remaining);
+        collected.fetchedChars += text.length;
+        collected.fetched.push(article.title);
+        context.push(`# ${article.title}\n${text}`);
+      } catch {}
+    }
+    if (!context.length) {
+      context.push(...results.map((r) => `# ${r.title}\n${r.snippet}`));
+    }
+    const answer = await agentLlmChat([
+      { role: "system", content: command.synthesisPrompt(surface) },
+      { role: "user", content: `Question: ${question}\n\nContext:\n${context.join("\n\n")}` },
+    ], { maxTokens: surface === "mesh" ? AGENT_MESH_MAX_TOKENS : AGENT_LOCAL_MAX_TOKENS });
+    const text = String(answer.content || "").trim();
+    if (text) {
+      return text;
+    }
+  }
+  throw new Error("no results");
+}
+
+async function runAgentCommand(command, slashCommand, { surface = "local", peerId = null } = {}) {
+  const question = slashCommand.raw.slice(slashCommand.name.length).trim();
+  if (!question) {
+    return `Usage: ${command.helpText}`;
+  }
+  const sourceLabels = command.sources
+    .map((id) => knowledgeSources[id])
+    .filter((s) => s && s.available())
+    .map((s) => s.label.toUpperCase());
+  if (!sourceLabels.length) {
+    return "No knowledge sources available (offline or disabled in settings).";
+  }
+  if (surface === "mesh" && peerId) {
+    // Fire-and-forget interim packet; the real answer follows via the queue.
+    sendMeshReply(peerId, `SEARCHING ${sourceLabels.join("+")}...`).catch(() => {});
+  }
+  broadcast("agent_status", { command: command.name, stage: "searching" });
+
+  // Mesh callers wait on radio airtime; local callers can afford slower models.
+  const deadline = Date.now() + (surface === "mesh" ? AGENT_TOTAL_BUDGET_MS : AGENT_TOTAL_BUDGET_MS * 2);
+  const collected = { results: [], fetched: [], fetchedChars: 0, query: question, mode: "tool" };
+  let answer = "";
+  let failure = "";
+  try {
+    const cached = agentToolModeCache.get(currentModelName);
+    if (cached !== false) {
+      try {
+        answer = await runAgentToolLoop(command, question, surface, deadline, collected);
+      } catch (toolError) {
+        collected.mode = `pipeline (tool mode: ${toolError.message})`;
+        answer = await runAgentPipeline(command, question, surface, deadline, collected);
+      }
+    } else {
+      collected.mode = "pipeline (cached)";
+      answer = await runAgentPipeline(command, question, surface, deadline, collected);
+    }
+  } catch (error) {
+    failure = error.message;
+    answer = "";
+  }
+  broadcast("agent_status", { command: command.name, stage: "done" });
+  addMessage({
+    direction: "system",
+    sender: "agent",
+    recipient: "-",
+    text: `/${command.name} mode=${collected.mode} query=${JSON.stringify(collected.query)} fetched=[${collected.fetched.join("; ")}]${failure ? ` FAILED: ${failure}` : ""}${answer ? "" : " -> fallback"}`,
+    transport: "agent",
+  });
+  if (answer) {
+    return surface === "mesh" ? sanitizeMeshReply(answer) : answer;
+  }
+  return command.fallback(collected.results);
+}
+// ===== end agent commands ================================================
+
 function parseLocalSlashCommand(prompt) {
   const normalized = String(prompt || "").trim();
   if (!normalized.startsWith("/")) {
@@ -2604,6 +3003,9 @@ function parseLocalSlashCommand(prompt) {
   const command = normalized.split(/\s+/, 1)[0].toLowerCase();
   if (command === "/help" || command === "/summary" || command === "/weather" || command === "/activity" || command === "/battery" || command === "/nodecheck" || command === "/trace" || command === "/advert") {
     return { name: command, raw: normalized };
+  }
+  if (getAgentCommand(command)) {
+    return { name: command, raw: normalized, agent: true };
   }
   return null;
 }
@@ -2772,7 +3174,18 @@ function buildSlashCommandSystemPrompt(commandName) {
 
 function buildSlashCommandFallback(commandName, context) {
   if (commandName === "/help") {
-    return "/summary - network stats\n/weather - conditions\n/activity - recent events\n/battery - local power\n/nodecheck <name> - live node status\n/trace <name> - route + SNR\n/advert [flood] - announce\n/wallet - balance\nsend <amount> <node> - send Cashu";
+    return [
+      "/summary - network stats",
+      "/weather - conditions",
+      "/activity - recent events",
+      "/battery - local power",
+      "/nodecheck <name> - live node status",
+      "/trace <name> - route + SNR",
+      "/advert [flood] - announce",
+      ...agentHelpLines(),
+      "/wallet - balance",
+      "send <amount> <node> - send Cashu",
+    ].join("\n");
   }
   if (commandName === "/weather") {
     if (!context.weather.totalSources) {
@@ -2856,7 +3269,12 @@ function buildSlashCommandFallback(commandName, context) {
   );
 }
 
-async function generateSlashCommandReply(peerId, slashCommand) {
+async function generateSlashCommandReply(peerId, slashCommand, options = {}) {
+  const surface = options.surface === "mesh" ? "mesh" : "local";
+  const agentCommand = getAgentCommand(slashCommand.name);
+  if (agentCommand) {
+    return runAgentCommand(agentCommand, slashCommand, { surface, peerId });
+  }
   if (slashCommand.name === "/help") {
     return buildSlashCommandFallback("/help", {});
   }
@@ -4158,7 +4576,7 @@ function trimResponseSafe(text) {
 async function generateReply(peerId, prompt) {
   const slashCommand = parseLocalSlashCommand(prompt);
   if (slashCommand) {
-    return generateSlashCommandReply(peerId, slashCommand);
+    return generateSlashCommandReply(peerId, slashCommand, { surface: "local" });
   }
 
   const history = getHistory(peerId);
@@ -4293,7 +4711,7 @@ function sanitizeMeshReply(text) {
 async function generateMeshReply(peerId, prompt) {
   const slashCommand = parseLocalSlashCommand(prompt);
   if (slashCommand) {
-    return generateSlashCommandReply(peerId, slashCommand);
+    return generateSlashCommandReply(peerId, slashCommand, { surface: "mesh" });
   }
 
   const history = getHistory(peerId);
@@ -4591,9 +5009,16 @@ function startLlamaServer() {
     "--host", LLM_HOST,
     "--port", String(LLM_PORT),
     "--model", getModelPath(),
-    "--ctx-size", "1536",
+    // 4096 fits agent retrieval context (question + ~2 article extracts + answer)
+    "--ctx-size", "4096",
     "--threads", "4",
     "--n-predict", "512",
+    // enable model-native chat templates incl. tool calling for agent commands
+    "--jinja",
+    // thinking models (Qwen3/3.5) otherwise burn the whole token budget in
+    // reasoning_content and return empty content for chat + agent calls
+    // (--reasoning-budget 0 does NOT stop Qwen3.5; "off" does)
+    "--reasoning", "off",
   ];
 
   try {

@@ -137,12 +137,49 @@ the device modal entirely. Groups:
       deaddrop_node noted as future candidate)
 - [x] Wipe `data/` node caches keyed by old IDs
 
+## Phase 6 — Agent commands (designed 2026-06-12, awaiting annotation)
+
+Goal: agentic inference. First command: `/wiki <question>` answers from Wikipedia.
+Framework-first: Wikipedia is plugin #1; PreTix ("informational") and PreTalx
+("operational") commands follow on the same rails. One command maps to one or
+several KnowledgeSources (online, offline, or mixed).
+
+Decisions: pluggable sources, online first (ZIM/Kiwix offline source deferred but
+designed-for); explicit `/command` trigger on BOTH surfaces (no free-form agency —
+predictable mesh airtime/latency); adaptive engine — native tool-call loop on
+capable models, fixed pipeline on small ones.
+
+- [x] `KnowledgeSource` interface: id, kind (online/offline), available(),
+      search(query, limit) → [{title, snippet, ref}], fetch(ref) → {title, text}
+      with token-budget trimming (~2-3k tokens)
+- [x] `AgentCommand` registry: {name, sources[], synthesisPrompt, fallback(results)};
+      parseLocalSlashCommand reads the registry (replaces hardcoded whitelist);
+      /help lists registered commands
+- [x] Wikipedia source: MediaWiki API (list=search + prop=extracts), lang from
+      settings (default en), proper User-Agent, 8s timeout
+- [x] Adaptive engine: probe loaded model for tool-template support; tool mode =
+      bounded loop (max 3 hops, tools generated per source, json_schema-constrained
+      output); pipeline mode = query-rewrite → search → fetch top 2 → synthesize;
+      both end in command.fallback(results) when the LLM fails
+- [x] llama-server spawn: add --jinja (tool templates); model manager recommends
+      Qwen2.5-7B-Instruct Q4_K_M for agent use
+- [x] Mesh discipline: immediate "SEARCHING <SOURCE>..." one-packet interim reply,
+      total agent budget ~90s, ≤300-char answers for mesh callers (longer locally),
+      existing sanitize → chunk → ack-paced send path
+- [x] Settings: appSettings.knowledge {wikipedia: {enabled, lang}}; SETUP knowledge
+      group can come with the PreTix/PreTalx sources (they need url+token fields)
+- [ ] Deferred by design: ZIM/Kiwix offline source (process-managed like
+      llama-server); action/mutation commands (PreTalx ops) — separate category
+      with explicit confirmation, NOT the read-only source interface
+
 ## Testing
 
 - Requires two MeshCore-flashed radios (reflash existing hardware via
   flasher.meshcore.io). Phase 1-2 testable with one radio + meshcore-cli on a laptop.
 - Golden path per phase: connect → contacts appear → DM with delivery tick →
   channel msg → AI reply over mesh → wallet send.
+- Phase 6: /wiki round-trip locally with 0.5B (pipeline mode) and with
+  Qwen2.5-7B (tool mode); /wiki over mesh incl. interim message and chunked answer.
 
 ## Open questions — all resolved 2026-06-10
 
