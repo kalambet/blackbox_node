@@ -37,6 +37,12 @@ cashu*.json
 seed*.json
 
 # -----------------------------------------------------------------------------
+# Local process-manager / deployment config (holds machine-specific paths)
+# -----------------------------------------------------------------------------
+ecosystem.config.js
+!ecosystem.config.example.js
+
+# -----------------------------------------------------------------------------
 # Python caches / virtual environments
 # -----------------------------------------------------------------------------
 __pycache__/
