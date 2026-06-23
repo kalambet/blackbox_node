@@ -14,7 +14,12 @@ if ((!globalThis.crypto || typeof globalThis.crypto.getRandomValues !== "functio
   });
 }
 
-const HOST = "127.0.0.1";
+// Default loopback (safe for the Mac Mini). A headless Pi sets HOST to its tailnet
+// IP (or 0.0.0.0) so the dashboard is reachable from a phone/laptop on the tailnet.
+const HOST = (() => {
+  const env = String(process.env.HOST || "").trim();
+  return env || "127.0.0.1";
+})();
 const DEFAULT_PORT = 7860;
 const parsedPort = Number.parseInt(process.env.PORT || "", 10);
 const PORT = Number.isInteger(parsedPort) && parsedPort > 0 ? parsedPort : DEFAULT_PORT;
@@ -48,7 +53,42 @@ const LLM_PORT = (() => {
   const env = parseInt(process.env.LLM_PORT, 10);
   return Number.isInteger(env) && env > 0 ? env : 8080;
 })();
-const LLM_BASE_URL = `http://${LLM_HOST}:${LLM_PORT}`;
+const LLM_LOCAL_BASE_URL = `http://${LLM_HOST}:${LLM_PORT}`;
+const DEFAULT_INFERENCE_MODE = "local";
+
+// Inference can run against a locally-spawned llama-server (default) or a remote
+// OpenAI-compatible endpoint (e.g. a Mac Mini reachable over Tailscale). Env vars
+// override persisted settings, mirroring getConfiguredRadioAddress / MESHCORE_ADDRESS.
+function getConfiguredInferenceMode() {
+  const env = String(process.env.LLM_MODE || "").trim().toLowerCase();
+  if (env === "remote" || env === "local") return env;
+  const setting = appSettings?.aiSettings?.inferenceMode;
+  return setting === "remote" ? "remote" : DEFAULT_INFERENCE_MODE;
+}
+
+function normalizeRemoteLlmUrl(value) {
+  let url = String(value || "").trim();
+  if (!/^https?:\/\//i.test(url)) return "";
+  url = url.replace(/\/+$/, "");
+  url = url.replace(/\/v1$/i, "");
+  return url;
+}
+
+function getConfiguredRemoteLlmUrl() {
+  const env = normalizeRemoteLlmUrl(process.env.LLM_REMOTE_URL);
+  if (env) return env;
+  return normalizeRemoteLlmUrl(appSettings?.aiSettings?.remoteUrl);
+}
+
+// The single chokepoint every LLM HTTP call reads. Recomputed per call so a
+// settings POST or live mode switch takes effect with no extra wiring.
+function getLlmBaseUrl() {
+  if (getConfiguredInferenceMode() === "remote") {
+    const remote = getConfiguredRemoteLlmUrl();
+    if (remote) return remote;
+  }
+  return LLM_LOCAL_BASE_URL;
+}
 const DEFAULT_MODEL_NAME = "Qwen2.5-0.5B-Instruct-Q4_K_M.gguf";
 const CURATED_MODELS = [
   {
@@ -209,6 +249,8 @@ const DEFAULT_AI_SETTINGS = Object.freeze({
   meshTemperature: 0.1,
   meshTopP: 0.6,
   meshMaxTokens: 120,
+  inferenceMode: DEFAULT_INFERENCE_MODE,
+  remoteUrl: "",
 });
 const MESH_PACKET_MAX_BYTES = 120;
 const MESH_PACKET_MAX_BYTES_CASHU = 72;
@@ -238,7 +280,18 @@ let swaps = [];
 let meshtasticStatus = { connected: false, mode: "starting", error: null };
 let localMeshNodeId = null;
 let currentModelName = DEFAULT_MODEL_NAME;
+// In remote mode the host decides the model; we display whatever /v1/models reports.
+let remoteModelName = "";
 let llmStatus = { connected: false, mode: "starting", model: currentModelName, error: null, switching: false };
+
+// The model id sent in chat requests and shown in status. Remote servers serve a
+// single loaded model; sending its real id avoids 400s on strict servers (vLLM).
+function getActiveModelName() {
+  if (getConfiguredInferenceMode() === "remote") {
+    return remoteModelName || currentModelName;
+  }
+  return currentModelName;
+}
 let meshSendQueue = Promise.resolve();
 // Map clientMsgId -> message.id (for linking sent event to outgoing message)
 const pendingMsgByClientId = new Map();
@@ -2266,6 +2319,8 @@ function normalizeAiSettings(input) {
     meshTemperature: clampNumber(source.meshTemperature, 0, 2, DEFAULT_AI_SETTINGS.meshTemperature),
     meshTopP: clampNumber(source.meshTopP, 0.05, 1, DEFAULT_AI_SETTINGS.meshTopP),
     meshMaxTokens: clampInteger(source.meshMaxTokens, 32, 512, DEFAULT_AI_SETTINGS.meshMaxTokens),
+    inferenceMode: source.inferenceMode === "remote" ? "remote" : DEFAULT_INFERENCE_MODE,
+    remoteUrl: normalizeRemoteLlmUrl(source.remoteUrl).slice(0, 300),
   };
 }
 
@@ -2277,6 +2332,39 @@ function updateAiSettings(nextSettings) {
   appSettings.aiSettings = normalizeAiSettings(nextSettings);
   persistSettings();
   return getAiSettingsPayload();
+}
+
+// Effective inference config for the SETUP UI. Exposes whether env vars are forcing
+// the values (so the UI can show the fields read-only) vs. the persisted settings.
+function getInferenceConfigPayload() {
+  const envMode = String(process.env.LLM_MODE || "").trim().toLowerCase();
+  const envUrl = normalizeRemoteLlmUrl(process.env.LLM_REMOTE_URL);
+  return {
+    mode: getConfiguredInferenceMode(),
+    remoteUrl: getConfiguredRemoteLlmUrl(),
+    settingMode: appSettings?.aiSettings?.inferenceMode === "remote" ? "remote" : "local",
+    settingRemoteUrl: normalizeRemoteLlmUrl(appSettings?.aiSettings?.remoteUrl),
+    envForcedMode: envMode === "remote" || envMode === "local",
+    envForcedUrl: Boolean(envUrl),
+    localBaseUrl: LLM_LOCAL_BASE_URL,
+  };
+}
+
+// Persist a mode/URL change and re-run the inference lifecycle live (no restart),
+// mirroring restartBridge. Env overrides still win at read time via the accessors.
+function applyInferenceConfig({ mode, remoteUrl }) {
+  const nextMode = mode === "remote" ? "remote" : "local";
+  const nextUrl = typeof remoteUrl === "string" ? remoteUrl : (appSettings.aiSettings?.remoteUrl || "");
+  appSettings.aiSettings = normalizeAiSettings({
+    ...getAiSettingsPayload(),
+    inferenceMode: nextMode,
+    remoteUrl: nextUrl,
+  });
+  persistSettings();
+  remoteModelName = "";
+  stopLlamaServer();
+  startInferenceBackend();
+  return getInferenceConfigPayload();
 }
 
 function buildInstructionSuffix(aiSettings) {
@@ -2747,9 +2835,39 @@ function agentHelpLines() {
     .map((command) => command.helpText);
 }
 
-async function agentLlmChat(messages, { maxTokens, tools = undefined, jsonSchema = undefined } = {}) {
+// Default timeouts for chat completions. Generous on localhost; the real value of
+// the cap is in remote mode where a hung WAN connection would otherwise block the
+// mesh send queue and request handlers indefinitely.
+const LLM_TIMEOUT_LOCAL_MS = 60000;
+const LLM_TIMEOUT_MESH_MS = 30000;
+
+async function llmChatCompletion(body, { timeoutMs = LLM_TIMEOUT_LOCAL_MS } = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(`${getLlmBaseUrl()}/v1/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      throw new Error(`LLM HTTP ${response.status}`);
+    }
+    return await response.json();
+  } catch (error) {
+    if (error.name === "AbortError") {
+      throw new Error("LLM timeout");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function agentLlmChat(messages, { maxTokens, tools = undefined, jsonSchema = undefined, timeoutMs = LLM_TIMEOUT_LOCAL_MS } = {}) {
   const body = {
-    model: currentModelName,
+    model: getActiveModelName(),
     messages,
     temperature: 0.3,
     top_p: 0.9,
@@ -2763,15 +2881,7 @@ async function agentLlmChat(messages, { maxTokens, tools = undefined, jsonSchema
   if (jsonSchema) {
     body.response_format = { type: "json_schema", json_schema: { name: "agent", schema: jsonSchema } };
   }
-  const response = await fetch(`${LLM_BASE_URL}/v1/chat/completions`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!response.ok) {
-    throw new Error(`LLM HTTP ${response.status}`);
-  }
-  const data = await response.json();
+  const data = await llmChatCompletion(body, { timeoutMs });
   return data.choices?.[0]?.message || {};
 }
 
@@ -2849,6 +2959,9 @@ async function runAgentToolLoop(command, question, surface, deadline, collected)
     const message = await agentLlmChat(messages, {
       maxTokens: surface === "mesh" ? AGENT_MESH_MAX_TOKENS : AGENT_LOCAL_MAX_TOKENS,
       tools,
+      // Cap each hop at the remaining agent budget so one slow remote hop can't
+      // hang past the deadline (WAN latency × up to AGENT_MAX_TOOL_HOPS).
+      timeoutMs: Math.max(5000, deadline - Date.now()),
     });
     const toolCalls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
     if (!toolCalls.length) {
@@ -3329,30 +3442,20 @@ async function generateSlashCommandReply(peerId, slashCommand, options = {}) {
   const fallback = buildSlashCommandFallback(slashCommand.name, context);
 
   try {
-    const response = await fetch(`${LLM_BASE_URL}/v1/chat/completions`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: currentModelName,
-        messages: [
-          { role: "system", content: buildSlashCommandSystemPrompt(slashCommand.name) },
-          {
-            role: "user",
-            content: `Command: ${slashCommand.name}\nOriginal input: ${slashCommand.raw}\nStructured telemetry context:\n${JSON.stringify(context, null, 2)}`,
-          },
-        ],
-        temperature: Math.min(aiSettings.localTemperature, 0.3),
-        top_p: aiSettings.localTopP,
-        max_tokens: Math.min(aiSettings.localMaxTokens, slashCommand.name === "/nodecheck" ? 400 : 320),
-        stream: false,
-      }),
-    });
-
-    if (!response.ok) {
-      return fallback;
-    }
-
-    const payload = await response.json();
+    const payload = await llmChatCompletion({
+      model: getActiveModelName(),
+      messages: [
+        { role: "system", content: buildSlashCommandSystemPrompt(slashCommand.name) },
+        {
+          role: "user",
+          content: `Command: ${slashCommand.name}\nOriginal input: ${slashCommand.raw}\nStructured telemetry context:\n${JSON.stringify(context, null, 2)}`,
+        },
+      ],
+      temperature: Math.min(aiSettings.localTemperature, 0.3),
+      top_p: aiSettings.localTopP,
+      max_tokens: Math.min(aiSettings.localMaxTokens, slashCommand.name === "/nodecheck" ? 400 : 320),
+      stream: false,
+    }, { timeoutMs: surface === "mesh" ? LLM_TIMEOUT_MESH_MS : LLM_TIMEOUT_LOCAL_MS });
     const reply = String(payload.choices?.[0]?.message?.content || "").replace(/\s+/g, " ").trim();
     return reply ? trimResponse(reply) : fallback;
   } catch {
@@ -4340,6 +4443,12 @@ function getModelManagerUiScript() {
 }
 
 function openBrowser() {
+  // Only auto-open on a desktop bound to loopback. On a headless Pi bound to a
+  // tailnet IP / 0.0.0.0 there is no browser and the URL isn't locally meaningful.
+  const isLoopback = HOST === "127.0.0.1" || HOST === "localhost" || HOST === "::1";
+  if (!isLoopback || String(process.env.BLACKBOX_NO_BROWSER || "").trim() === "1") {
+    return;
+  }
   const url = `http://${HOST}:${PORT}`;
   const platform = process.platform;
   let cmd, args;
@@ -4507,25 +4616,50 @@ function getModelPath(modelName = currentModelName) {
   return path.join(MODELS_DIR, modelName);
 }
 
+async function remoteLlmHealth() {
+  const host = getLlmBaseUrl();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 5000);
+  try {
+    const response = await fetch(`${host}/health`, { signal: controller.signal });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    return { ok: true, host, model: getActiveModelName() };
+  } catch (error) {
+    const reason = error.name === "AbortError" ? "timeout" : String(error.message || error);
+    return { ok: false, host, model: getActiveModelName(), error: reason };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function llamaHealth() {
+  if (getConfiguredInferenceMode() === "remote") {
+    if (!getConfiguredRemoteLlmUrl()) {
+      return { ok: false, host: getLlmBaseUrl(), model: getActiveModelName(), error: "remote inference URL not set" };
+    }
+    return remoteLlmHealth();
+  }
+  const host = getLlmBaseUrl();
   if (!fs.existsSync(LLAMA_EXE)) {
-    return { ok: false, host: LLM_BASE_URL, model: currentModelName, error: "llama-server not found" };
+    return { ok: false, host, model: currentModelName, error: "llama-server not found" };
   }
   if (!fs.existsSync(getModelPath())) {
-    return { ok: false, host: LLM_BASE_URL, model: currentModelName, error: "GGUF model not found" };
+    return { ok: false, host, model: currentModelName, error: "GGUF model not found" };
   }
   try {
-    const response = await fetch(`${LLM_BASE_URL}/health`);
+    const response = await fetch(`${host}/health`);
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
     return {
       ok: true,
-      host: LLM_BASE_URL,
+      host,
       model: currentModelName,
     };
   } catch (error) {
-    return { ok: false, host: LLM_BASE_URL, model: currentModelName, error: String(error.message || error) };
+    return { ok: false, host, model: currentModelName, error: String(error.message || error) };
   }
 }
 
@@ -4581,31 +4715,21 @@ async function generateReply(peerId, prompt) {
 
   const history = getHistory(peerId);
   const aiSettings = getAiSettingsPayload();
-  const response = await fetch(`${LLM_BASE_URL}/v1/chat/completions`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: currentModelName,
-      messages: [
-        {
-          role: "system",
-          content: buildLocalSystemPrompt(aiSettings),
-        },
-        ...history,
-        { role: "user", content: prompt },
-      ],
-      temperature: aiSettings.localTemperature,
-      top_p: aiSettings.localTopP,
-      max_tokens: aiSettings.localMaxTokens,
-      stream: false,
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`LLM HTTP ${response.status}`);
-  }
-
-  const payload = await response.json();
+  const payload = await llmChatCompletion({
+    model: getActiveModelName(),
+    messages: [
+      {
+        role: "system",
+        content: buildLocalSystemPrompt(aiSettings),
+      },
+      ...history,
+      { role: "user", content: prompt },
+    ],
+    temperature: aiSettings.localTemperature,
+    top_p: aiSettings.localTopP,
+    max_tokens: aiSettings.localMaxTokens,
+    stream: false,
+  }, { timeoutMs: LLM_TIMEOUT_LOCAL_MS });
   const reply = String(payload.choices?.[0]?.message?.content || "No response.").replace(/\s+/g, " ").trim() || "No response.";
   saveHistory(peerId, [...history, { role: "user", content: prompt }, { role: "assistant", content: reply }]);
   return reply;
@@ -4716,29 +4840,19 @@ async function generateMeshReply(peerId, prompt) {
 
   const history = getHistory(peerId);
   const aiSettings = getAiSettingsPayload();
-  const response = await fetch(`${LLM_BASE_URL}/v1/chat/completions`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: currentModelName,
-      messages: [
-        { role: "system", content: buildMeshSystemPrompt(aiSettings) },
-        ...history,
-        { role: "user", content: prompt },
-      ],
-      temperature: aiSettings.meshTemperature,
-      top_p: aiSettings.meshTopP,
-      max_tokens: aiSettings.meshMaxTokens,
-      stop: ["<|im_end|>", "<|im_start|>", "<|eot_id|>", "<|start_header_id|>", "[/INST]", "<<SYS>>", "</s>", "<|end|>"],
-      stream: false,
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`LLM HTTP ${response.status}`);
-  }
-
-  const data = await response.json();
+  const data = await llmChatCompletion({
+    model: getActiveModelName(),
+    messages: [
+      { role: "system", content: buildMeshSystemPrompt(aiSettings) },
+      ...history,
+      { role: "user", content: prompt },
+    ],
+    temperature: aiSettings.meshTemperature,
+    top_p: aiSettings.meshTopP,
+    max_tokens: aiSettings.meshMaxTokens,
+    stop: ["<|im_end|>", "<|im_start|>", "<|eot_id|>", "<|start_header_id|>", "[/INST]", "<<SYS>>", "</s>", "<|end|>"],
+    stream: false,
+  }, { timeoutMs: LLM_TIMEOUT_MESH_MS });
   const reply = sanitizeMeshReply(data.choices?.[0]?.message?.content || "");
   saveHistory(peerId, [...history, { role: "user", content: prompt }, { role: "assistant", content: reply }]);
   return reply;
@@ -4977,7 +5091,7 @@ let bridgeRetryTimeout = null;
 let llamaHealthInterval = null;
 
 function updateLlmStatus(patch) {
-  llmStatus = { ...llmStatus, ...patch, model: currentModelName };
+  llmStatus = { ...llmStatus, ...patch, model: getActiveModelName() };
   broadcast("status", { llm: llmStatus });
 }
 
@@ -5054,7 +5168,67 @@ function startLlamaServer() {
   }, 1000);
 }
 
+// Ask the remote endpoint which model it has loaded so the UI shows the real id.
+async function refreshRemoteModelName() {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 5000);
+  try {
+    const response = await fetch(`${getLlmBaseUrl()}/v1/models`, { signal: controller.signal });
+    if (!response.ok) return;
+    const data = await response.json();
+    const id = data?.data?.[0]?.id;
+    if (id) remoteModelName = String(id);
+  } catch {
+    // leave remoteModelName as-is on failure
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Remote-mode counterpart of startLlamaServer: no local exe/model needed. Polls
+// the remote /health and keeps polling so a mid-session WAN drop flips the badge.
+function startRemoteLlmMonitor() {
+  stopLlamaServer();
+  if (!getConfiguredRemoteLlmUrl()) {
+    updateLlmStatus({ connected: false, mode: "remote-unreachable", error: "remote inference URL not set", switching: false });
+    return;
+  }
+  updateLlmStatus({ connected: false, mode: "remote-connecting", error: null, switching: true });
+  llamaHealthInterval = setInterval(async () => {
+    if (getConfiguredInferenceMode() !== "remote") {
+      clearInterval(llamaHealthInterval);
+      llamaHealthInterval = null;
+      return;
+    }
+    const health = await remoteLlmHealth();
+    if (health.ok) {
+      refreshRemoteModelName();
+      updateLlmStatus({ connected: true, mode: "remote-llama", error: null, switching: false });
+    } else {
+      updateLlmStatus({ connected: false, mode: "remote-unreachable", error: health.error || "unreachable", switching: false });
+    }
+  }, 3000);
+}
+
+// Start whichever inference backend the current mode calls for.
+function startInferenceBackend() {
+  if (getConfiguredInferenceMode() === "remote") {
+    startRemoteLlmMonitor();
+  } else {
+    startLlamaServer();
+  }
+}
+
+const REMOTE_MODEL_MANAGE_ERROR = "Model management is disabled in remote inference mode";
+
+function assertLocalInferenceMode() {
+  if (getConfiguredInferenceMode() === "remote") {
+    throw new Error(REMOTE_MODEL_MANAGE_ERROR);
+  }
+}
+
 async function switchModel(modelName) {
+  assertLocalInferenceMode();
   const availableModels = listAvailableModels();
   if (!availableModels.includes(modelName)) {
     throw new Error("Model not found");
@@ -5074,6 +5248,7 @@ async function switchModel(modelName) {
 }
 
 function installModel(modelId) {
+  assertLocalInferenceMode();
   const curated = CURATED_MODELS.find((model) => model.id === modelId);
   if (!curated) {
     throw new Error("Model catalog entry not found");
@@ -5210,6 +5385,7 @@ function cancelModelInstall() {
 }
 
 async function deleteModel(filename) {
+  assertLocalInferenceMode();
   const modelName = String(filename || "").trim();
   if (!modelName) {
     throw new Error("Model filename is required");
@@ -5535,13 +5711,20 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === "GET" && req.url === "/api/status") {
+      const remote = getConfiguredInferenceMode() === "remote";
       const health = await llamaHealth();
       if (health.ok) {
-        llmStatus = { ...llmStatus, connected: true, mode: "local-llama", model: currentModelName, error: null };
+        const mode = remote ? "remote-llama" : "local-llama";
+        llmStatus = { ...llmStatus, connected: true, mode, model: getActiveModelName(), error: null };
       }
       return sendJson(res, 200, {
         meshtastic: getMeshtasticStatusPayload(),
-        llm: { ...llmStatus, health, availableModels: listAvailableModels(), currentModel: currentModelName },
+        llm: {
+          ...llmStatus,
+          health,
+          availableModels: remote ? [] : listAvailableModels(),
+          currentModel: getActiveModelName(),
+        },
         walletTestMode: isTestMode(),
         meshAiReply: isMeshAiReplyEnabled(),
       });
@@ -5725,6 +5908,9 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === "POST" && req.url === "/api/models/select") {
+      if (getConfiguredInferenceMode() === "remote") {
+        return sendJson(res, 409, { error: REMOTE_MODEL_MANAGE_ERROR });
+      }
       const body = await readJson(req);
       const model = String(body.model || "").trim();
       if (!model) {
@@ -5735,6 +5921,9 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === "POST" && req.url === "/api/models/install") {
+      if (getConfiguredInferenceMode() === "remote") {
+        return sendJson(res, 409, { error: REMOTE_MODEL_MANAGE_ERROR });
+      }
       const body = await readJson(req);
       const modelId = String(body.modelId || "").trim();
       if (!modelId) {
@@ -5750,6 +5939,9 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === "POST" && req.url === "/api/models/delete") {
+      if (getConfiguredInferenceMode() === "remote") {
+        return sendJson(res, 409, { error: REMOTE_MODEL_MANAGE_ERROR });
+      }
       const body = await readJson(req);
       const filename = String(body.filename || "").trim();
       if (!filename) {
@@ -5760,13 +5952,23 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === "GET" && req.url === "/api/ai-settings") {
-      return sendJson(res, 200, { currentModel: currentModelName, settings: getAiSettingsPayload() });
+      return sendJson(res, 200, { currentModel: getActiveModelName(), settings: getAiSettingsPayload(), inference: getInferenceConfigPayload() });
     }
 
     if (req.method === "POST" && req.url === "/api/ai-settings") {
       const body = await readJson(req);
       const settings = updateAiSettings(body.settings || body);
-      return sendJson(res, 200, { ok: true, currentModel: currentModelName, settings });
+      return sendJson(res, 200, { ok: true, currentModel: getActiveModelName(), settings });
+    }
+
+    if (req.method === "GET" && req.url === "/api/inference-mode") {
+      return sendJson(res, 200, { inference: getInferenceConfigPayload() });
+    }
+
+    if (req.method === "POST" && req.url === "/api/inference-mode") {
+      const body = await readJson(req);
+      const inference = applyInferenceConfig({ mode: body.mode, remoteUrl: body.remoteUrl });
+      return sendJson(res, 200, { ok: true, inference });
     }
 
     if (req.method === "POST" && req.url === "/api/chat") {
@@ -6318,8 +6520,26 @@ server.on("error", (error) => {
 
 server.listen(PORT, HOST, () => {
   console.log(`Localist listening at http://${HOST}:${PORT}`);
-  startLlamaServer();
+  startInferenceBackend();
   startBridge();
   openBrowser();
   startSwapPolling();
 });
+
+// Graceful shutdown: a bare SIGTERM/SIGINT leaves the spawned llama-server and
+// bridge.py orphaned (still holding :8080 / the serial port), which breaks the
+// next start under pm2/launchd. Tear down children, then exit.
+let shuttingDown = false;
+function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`Received ${signal}, shutting down...`);
+  try { stopLlamaServer(); } catch {}
+  try { stopBridge(); } catch {}
+  server.close(() => process.exit(0));
+  // Don't hang forever if a socket keeps the server open.
+  setTimeout(() => process.exit(0), 3000).unref();
+}
+
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));

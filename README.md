@@ -136,6 +136,67 @@ The app starts in whatever mode it can. Radio and mesh features stay inactive un
 
 ---
 
+## Remote inference (split deployment)
+
+Inference can run **locally** (the bundled `llama-server`, the default) or against a **remote**
+OpenAI-compatible endpoint. This lets a small field device (e.g. a Raspberry Pi with a MeshCore
+radio on USB) run the full dashboard + radio bridge while offloading the LLM to a more capable
+machine at home reached over [Tailscale](https://tailscale.com/).
+
+Switch modes live from **SETUP → INFERENCE** (toggle LOCAL / REMOTE + remote URL), or via env vars.
+
+### Env vars
+
+| Variable | Purpose |
+|---|---|
+| `LLM_MODE` | `local` (default) or `remote`. Overrides the saved setting; when set, the SETUP fields show read-only. |
+| `LLM_REMOTE_URL` | Base URL of the remote endpoint, e.g. `https://mac-mini.tailnet.ts.net`. A trailing `/` or `/v1` is stripped. |
+| `HOST` | Web UI bind address. Defaults to `127.0.0.1`. Set to the device's tailnet IP (preferred) or `0.0.0.0` to reach the dashboard from other devices. |
+| `PORT` | Web UI port (default `7860`). |
+| `LLM_PORT` | Local `llama-server` port (default `8080`); used in local mode only. |
+| `MESHCORE_ADDRESS` | Serial device or `host:port`, e.g. `/dev/ttyACM0`. Omit to auto-detect. |
+| `BLACKBOX_SKIP_BOOTSTRAP=1` | Skip the install-time download of `llama-server` + starter model (not needed on a remote-inference device). |
+| `BLACKBOX_NO_BROWSER=1` | Don't try to open a browser (headless). |
+
+In remote mode the device needs no `./llama/` runtime and no GGUF models, and the model manager
+(install/switch/delete) is disabled — the host owns the model.
+
+### Host (e.g. Mac Mini) — expose llama-server over Tailscale
+
+Run a standalone `llama-server` bound to loopback, then front it with `tailscale serve` (TLS +
+MagicDNS). Never bind `llama-server` to a public interface — it has no auth; rely on tailnet ACLs.
+
+```bash
+llama-server --host 127.0.0.1 --port 8080 --model <model>.gguf \
+  --ctx-size 4096 --jinja --reasoning off
+tailscale serve --bg --https=443 http://127.0.0.1:8080
+# the device then targets https://<host>.tailnet.ts.net
+```
+
+If MagicDNS is unavailable, target the `100.x.y.z` tailnet IP instead.
+
+### Field device (e.g. Raspberry Pi 5) — thin radio node
+
+```bash
+# install without the local inference runtime / model (~550 MB saved):
+BLACKBOX_SKIP_BOOTSTRAP=1 npm install
+# (meshcore installs lazily on first bridge start; needs internet once.
+#  to pre-stage it: pip install --target ./pydeps meshcore)
+
+LLM_MODE=remote \
+LLM_REMOTE_URL=https://mac-mini.tailnet.ts.net \
+HOST=<pi-tailnet-ip> \
+MESHCORE_ADDRESS=/dev/ttyACM0 \
+BLACKBOX_NO_BROWSER=1 \
+npm start
+```
+
+Run it under `systemd` with `After=tailscaled.service` and `Restart=on-failure` so it recovers on
+reboot. If the remote is unreachable the dashboard stays up and the LLM status shows
+`remote-unreachable`, recovering automatically when the endpoint returns.
+
+---
+
 ## Installation
 
 ### Fast path
@@ -305,8 +366,8 @@ On launch:
 
 | Setting | Value |
 |---|---|
-| Web UI | `http://127.0.0.1:7860` |
-| LLM backend | `http://127.0.0.1:8080` |
+| Web UI | `http://127.0.0.1:7860` (bind via `HOST`/`PORT`) |
+| LLM backend | `http://127.0.0.1:8080` local, or a remote endpoint — see [Remote inference](#remote-inference-split-deployment) |
 | Starter model installed by bootstrap | `Qwen2.5-0.5B-Instruct-Q3_K_M.gguf` |
 | Default model | `Qwen2.5-0.5B-Instruct-Q3_K_M.gguf` |
 

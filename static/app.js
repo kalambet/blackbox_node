@@ -280,6 +280,7 @@ let swapLnPollInterval = null;
 let showingDonateView = false;
 let latestMeshtasticConnected = false;
 let latestMeshStatus = {};
+let latestLlmStatus = {};
 let latestMessages = [];
 let latestLogs = [];
 let latestNodes = [];
@@ -1882,6 +1883,13 @@ function renderModelManager(payload) {
   latestModelManagerPayload = payload;
   const operation = payload?.operation || {};
   const activeId = operation.modelName || operation.modelId || "";
+  if (String(latestLlmStatus.mode || "").startsWith("remote")) {
+    // Model lifecycle lives on the remote host; local install/switch/delete 409.
+    modelManagerStatusText.textContent = `Remote inference - model managed on host (${latestLlmStatus.currentModel || latestLlmStatus.model || "n/a"})`;
+    renderInstalledModels(payload?.installed || [], operation);
+    renderCatalogModels(payload?.available || [], operation);
+    return;
+  }
   if (operation.active) {
     modelManagerStatusText.textContent = `${operation.action === "install" ? "Installing" : "Deleting"} ${operation.modelName || operation.modelId || "model"}...`;
   } else if (operation.error) {
@@ -4489,10 +4497,14 @@ function renderDeviceStatus(status) {
 }
 
 function renderModelStatus(llm) {
+  latestLlmStatus = llm || {};
+  const remote = String(llm.mode || "").startsWith("remote");
   const availableModels = llm.availableModels || [];
   const currentModel = llm.currentModel || llm.model || "";
   modelSelect.innerHTML = "";
-  availableModels.forEach((model) => {
+  // In remote mode the host owns the model; show it as a single, non-switchable entry.
+  const optionModels = remote ? (currentModel ? [currentModel] : []) : availableModels;
+  optionModels.forEach((model) => {
     const option = document.createElement("option");
     option.value = model;
     option.textContent = model;
@@ -4501,6 +4513,15 @@ function renderModelStatus(llm) {
   });
   currentSelectedModel = currentModel;
   aiSettingsCurrentModel.textContent = "Current model: " + (currentModel || "n/a");
+
+  if (remote) {
+    modelSelect.disabled = true;
+    modelStatusText.textContent = llm.connected
+      ? `Remote inference - ${currentModel || "n/a"}`
+      : `Remote unreachable - ${llm.error || llm.health?.error || "no connection"}`;
+    if (typeof setupInferenceLive === "function") setupInferenceLive();
+    return;
+  }
 
   if (llm.switching) {
     modelStatusText.textContent = `Switching to ${currentModel}...`;
@@ -4512,6 +4533,7 @@ function renderModelStatus(llm) {
   modelStatusText.textContent = llm.connected
     ? `Current model: ${currentModel}`
     : (llm.error || llm.health?.error || `Model: ${currentModel || "n/a"}`);
+  if (setupState.open && setupState.group === "inference") setupRenderInference();
 }
 
 function rebuildLocalHistory(messages) {
@@ -6401,6 +6423,7 @@ const SETUP_GROUPS = [
   { id: "radio", label: "RADIO", desc: "freq / sf / power" },
   { id: "channels", label: "CHANNELS", desc: "group slots + QR" },
   { id: "contacts", label: "CONTACTS", desc: "mesh address book" },
+  { id: "inference", label: "INFERENCE", desc: "local / remote LLM" },
   { id: "device", label: "DEVICE", desc: "stats / reboot" },
   { id: "advanced", label: "ADVANCED", desc: "telemetry / acks" },
 ];
@@ -6435,6 +6458,7 @@ const setupState = {
   deviceStats: null,
   exportedKey: null,
   lastContactUri: null,
+  inferenceCfg: null,
   statusText: "",
 };
 
@@ -6517,6 +6541,7 @@ function setupShowQr(container, uri, title) {
 function openSetupScreen(groupId = null) {
   setupState.open = true;
   setupState.group = null;
+  setupState.inferenceCfg = null;
   setupScreen.classList.remove("hidden");
   setupScreen.setAttribute("aria-hidden", "false");
   setupRenderLinkState();
@@ -6620,6 +6645,7 @@ function setupRenderGroup() {
     case "radio": return setupRenderRadio();
     case "channels": return setupRenderChannels();
     case "contacts": return setupRenderContacts();
+    case "inference": return setupRenderInference();
     case "device": return setupRenderDevice();
     case "advanced": return setupRenderAdvanced();
     default: return setupRenderMenu();
@@ -6741,6 +6767,110 @@ function setupRenderConnection() {
 
   root.appendChild(setupFooterRow([
     connectBtn,
+    setupButton("BACK", setupExitGroup),
+  ]));
+}
+
+/* ---- INFERENCE ---- */
+// Updates only the live status line (called on every status tick) so it never
+// clobbers the URL field while the user is typing.
+function setupInferenceLive() {
+  const line = document.getElementById("setupInferLive");
+  if (!line) return;
+  const llm = latestLlmStatus || {};
+  const mode = String(llm.mode || "");
+  const model = llm.currentModel || llm.model || "?";
+  let text;
+  if (mode === "remote-llama") text = `REMOTE OK - ${model}`;
+  else if (mode === "remote-connecting") text = "REMOTE CONNECTING...";
+  else if (mode === "remote-unreachable") text = `REMOTE UNREACHABLE - ${llm.error || llm.health?.error || "no connection"}`;
+  else if (mode === "local-llama") text = `LOCAL OK - ${model}`;
+  else text = `LLM: ${mode || "starting"}`;
+  line.textContent = text;
+}
+
+function setupRenderInference() {
+  const root = setupGroupShell("INFERENCE");
+
+  const live = setupEl("div", "setup-section-label", "");
+  live.id = "setupInferLive";
+  root.appendChild(live);
+  setupInferenceLive();
+
+  const cfg = setupState.inferenceCfg;
+  if (!cfg) {
+    root.appendChild(setupEl("div", "setup-section", "Loading inference config..."));
+    root.appendChild(setupFooterRow([setupButton("BACK", setupExitGroup)]));
+    fetchJson("/api/inference-mode").then((payload) => {
+      setupState.inferenceCfg = payload.inference || {};
+      if (setupState.open && setupState.group === "inference") setupRenderInference();
+    }).catch((error) => setupSetStatus(`Load failed: ${error.message}`));
+    return;
+  }
+
+  let mode = cfg.mode === "remote" ? "remote" : "local";
+  const envForced = Boolean(cfg.envForcedMode || cfg.envForcedUrl);
+
+  const section = setupEl("div", "setup-section");
+  section.appendChild(setupEl("div", "setup-section-label", "INFERENCE MODE"));
+
+  const toggle = setupEl("div", "setup-toggle");
+  const localBtn = setupEl("button", "", "LOCAL");
+  localBtn.type = "button";
+  const remoteBtn = setupEl("button", "", "REMOTE");
+  remoteBtn.type = "button";
+  const remoteWrap = setupEl("div", "");
+  const applyToggle = () => {
+    localBtn.classList.toggle("is-active", mode === "local");
+    remoteBtn.classList.toggle("is-active", mode === "remote");
+    remoteWrap.style.display = mode === "remote" ? "" : "none";
+  };
+  localBtn.addEventListener("click", () => { if (!envForced) { mode = "local"; applyToggle(); } });
+  remoteBtn.addEventListener("click", () => { if (!envForced) { mode = "remote"; applyToggle(); } });
+  toggle.append(localBtn, remoteBtn);
+  section.appendChild(toggle);
+
+  // Remote URL block
+  remoteWrap.style.marginTop = "10px";
+  const urlInput = setupInput("text", cfg.settingRemoteUrl || cfg.remoteUrl || "", "https://mac-mini.tailnet.ts.net");
+  if (envForced) urlInput.disabled = true;
+  const grid = setupEl("div", "setup-grid");
+  grid.appendChild(setupField("REMOTE URL", urlInput));
+  remoteWrap.appendChild(grid);
+  remoteWrap.appendChild(setupEl("div", "setup-section-label", `LOCAL ENDPOINT ${cfg.localBaseUrl || ""}`));
+  section.appendChild(remoteWrap);
+  applyToggle();
+  root.appendChild(section);
+
+  if (envForced) {
+    root.appendChild(setupEl("div", "setup-section-label", "SET BY ENVIRONMENT (LLM_MODE / LLM_REMOTE_URL) - READ ONLY"));
+  }
+
+  const saveBtn = setupButton("SAVE", async () => {
+    if (mode === "remote" && !urlInput.value.trim()) {
+      setupSetStatus("Enter a remote URL (http:// or https://).");
+      return;
+    }
+    saveBtn.disabled = true;
+    setupSetStatus("Applying inference config...");
+    try {
+      const resp = await fetchJson("/api/inference-mode", {
+        method: "POST",
+        body: JSON.stringify({ mode, remoteUrl: urlInput.value.trim() }),
+      });
+      setupState.inferenceCfg = resp.inference || setupState.inferenceCfg;
+      setupSetStatus("Saved. Watch live status above.");
+      await loadStatus();
+    } catch (error) {
+      setupSetStatus(`Save failed: ${error.message}`);
+    } finally {
+      saveBtn.disabled = false;
+    }
+  }, "primary");
+  if (envForced) saveBtn.disabled = true;
+
+  root.appendChild(setupFooterRow([
+    saveBtn,
     setupButton("BACK", setupExitGroup),
   ]));
 }
