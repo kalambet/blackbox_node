@@ -1933,6 +1933,7 @@ function setAiSettingsToggle(button, enabled) {
   button.textContent = enabled ? "on" : "off";
   button.setAttribute("aria-pressed", enabled ? "true" : "false");
   button.classList.toggle("ai-reply-btn--on", enabled);
+  button.classList.toggle("ai-reply-btn--off", !enabled);
 }
 
 // Render an ON/OFF toggle per configured radio channel for command-listening,
@@ -2088,6 +2089,7 @@ function applyMeshAiReply(enabled) {
   meshAiReplyToggle.textContent = enabled ? "on" : "off";
   meshAiReplyToggle.setAttribute("aria-pressed", String(enabled));
   meshAiReplyToggle.classList.toggle("ai-reply-btn--on", enabled);
+  meshAiReplyToggle.classList.toggle("ai-reply-btn--off", !enabled);
 }
 
 async function loadMapNodeOnlineWindow() {

@@ -24,6 +24,9 @@
     --success-active-bg: #1a2e1a;
     --success: #38b26c;
     --danger: #d34c4c;
+    /* complementary OFF/inactive accent — mirrors --success-active */
+    --danger-active: #e0574f;
+    --danger-active-bg: #2e1a1a;
     --favorite: #f5c84c;
     --warn: #e8b84e;
     /* aliases — referenced across the sheet but previously undefined */
@@ -4891,6 +4894,15 @@ textarea,
 .ai-reply-btn--on {
     background: var(--success-active-bg);
     color: var(--success-active);
+    border-top-color: var(--edge-dark);
+    border-left-color: var(--edge-dark);
+    border-right-color: var(--edge-light);
+    border-bottom-color: var(--edge-light);
+}
+
+.ai-reply-btn--off {
+    background: var(--danger-active-bg);
+    color: var(--danger-active);
     border-top-color: var(--edge-dark);
     border-left-color: var(--edge-dark);
     border-right-color: var(--edge-light);
