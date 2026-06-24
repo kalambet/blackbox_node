@@ -30,6 +30,9 @@
     --surface: var(--bg-2);
     --fg: var(--ink);
     --text: var(--ink);
+    /* canonical type stacks */
+    --font-display: "Press Start Local", monospace;
+    --font-body: Consolas, "Cascadia Mono", "Courier New", monospace;
 }
 
 * {
@@ -38,7 +41,7 @@
 
 body {
     margin: 0;
-    font-family: Consolas, "Cascadia Mono", "Courier New", monospace;
+    font-family: var(--font-body);
     color: var(--ink);
     background:
         linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
@@ -90,7 +93,7 @@ body {
 }
 
 .titlebar-text {
-    font-family: "Press Start Local", monospace;
+    font-family: var(--font-display);
     font-size: 14px;
     font-weight: 700;
     letter-spacing: 0.02em;
@@ -192,7 +195,7 @@ body {
 .panel-action-button {
     min-width: 0;
     padding: 4px 7px;
-    font-family: "Press Start Local", monospace;
+    font-family: var(--font-display);
     font-size: 8px;
     line-height: 1;
     text-transform: uppercase;
@@ -274,7 +277,7 @@ body {
 .chat-mode-btn {
     min-width: 0;
     padding: 6px 8px;
-    font-family: "Press Start Local", monospace;
+    font-family: var(--font-display);
     font-size: 8px;
     text-transform: uppercase;
     background: var(--control-2);
@@ -328,7 +331,7 @@ body {
 }
 
 .chat-peer-field span {
-    font-family: "Press Start Local", monospace;
+    font-family: var(--font-display);
     font-size: 8px;
     text-transform: uppercase;
     color: var(--muted);
@@ -344,7 +347,7 @@ body {
 .chat-peer-filter-btn {
     min-width: 0;
     padding: 4px 6px;
-    font-family: "Press Start Local", monospace;
+    font-family: var(--font-display);
     font-size: 7px;
     line-height: 1;
     text-transform: uppercase;
@@ -401,7 +404,7 @@ body {
 }
 
 .chat-peer-trigger:hover {
-    background: #1e2e3e;
+    background: var(--panel-2);
 }
 
 .chat-peer-trigger svg {
@@ -441,11 +444,11 @@ body {
 }
 
 .chat-peer-item:hover {
-    background: #1e2e3e;
+    background: var(--panel-2);
 }
 
 .chat-peer-item.is-active {
-    background: #1a3048;
+    background: var(--control);
     color: #a0d4f0;
 }
 
@@ -507,7 +510,7 @@ body {
 }
 
 .chat-peer-icon-btn:hover:not(:disabled) {
-    background: #1e2e3e;
+    background: var(--panel-2);
     color: var(--fg);
 }
 
@@ -551,7 +554,7 @@ body {
 
 h2 {
     margin: 0;
-    font-family: "Press Start Local", monospace;
+    font-family: var(--font-display);
     font-size: 12px;
     font-weight: 700;
     text-transform: uppercase;
@@ -626,7 +629,7 @@ h2 {
 }
 
 .device-status-title {
-    font-family: "Press Start Local", monospace;
+    font-family: var(--font-display);
     font-size: 10px;
     font-weight: 700;
     line-height: 1.3;
@@ -711,7 +714,7 @@ select {
 }
 
 .form-title {
-    font-family: "Press Start Local", monospace;
+    font-family: var(--font-display);
     font-size: 10px;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -752,7 +755,7 @@ select {
 }
 
 .chat-reply-label {
-    font-family: "Press Start Local", monospace;
+    font-family: var(--font-display);
     font-size: 9px;
     color: var(--muted);
     text-transform: uppercase;
@@ -953,7 +956,7 @@ select {
     padding: 0;
     display: inline-grid;
     place-items: center;
-    font-family: Consolas, "Cascadia Mono", "Courier New", monospace;
+    font-family: var(--font-body);
     font-size: 18px;
     font-weight: 700;
     line-height: 1;
@@ -1000,7 +1003,7 @@ select {
 
 .nodepick-header {
     padding: 6px 8px 4px;
-    font-family: "Press Start Local", monospace;
+    font-family: var(--font-display);
     font-size: 7px;
     text-transform: uppercase;
     color: var(--muted);
@@ -1013,7 +1016,7 @@ select {
     border: none;
     border-bottom: 1px solid var(--edge-dark);
     color: var(--fg);
-    font-family: Consolas, "Cascadia Mono", "Courier New", monospace;
+    font-family: var(--font-body);
     font-size: 11px;
     padding: 5px 8px;
     outline: none;
@@ -1036,7 +1039,7 @@ select {
 }
 
 .chat-command-item:hover {
-    background: #31404f;
+    background: var(--control);
 }
 
 .chat-command-item-name {
@@ -1045,7 +1048,7 @@ select {
 }
 
 .chat-command-item-desc {
-    font-family: Consolas, "Cascadia Mono", "Courier New", monospace;
+    font-family: var(--font-body);
     font-size: 10px;
     line-height: 1.3;
     color: var(--muted);
@@ -1248,7 +1251,7 @@ body.is-resizing-panels {
     display: flex;
     align-items: center;
     gap: 4px;
-    font-family: Consolas, "Cascadia Mono", "Courier New", monospace;
+    font-family: var(--font-body);
     font-size: 11px;
     font-weight: normal;
     color: var(--success);
@@ -1515,7 +1518,7 @@ body.is-resizing-panels {
 
 .nodes-map-container .leaflet-container {
     background: var(--ink-well);
-    font-family: "Press Start Local", monospace;
+    font-family: var(--font-display);
     font-size: 10px;
 }
 
@@ -1572,7 +1575,7 @@ body.is-resizing-panels {
 }
 
 .nodes-map-label {
-    font-family: "Press Start Local", monospace;
+    font-family: var(--font-display);
     font-size: 8px;
     color: #e0e6ed;
     text-shadow:
@@ -1582,7 +1585,7 @@ body.is-resizing-panels {
 }
 
 .nodes-map-popup {
-    font-family: "Press Start Local", monospace;
+    font-family: var(--font-display);
     font-size: 9px;
     line-height: 1.5;
     color: #c8d0d8;
@@ -1647,7 +1650,7 @@ body.is-resizing-panels {
 .nodes-map-toggle-btn {
     display: block;
     padding: 5px 8px;
-    font-family: "Press Start Local", monospace;
+    font-family: var(--font-display);
     font-size: 7px;
     line-height: 1;
     background: var(--bg-2);
@@ -1691,7 +1694,7 @@ body.is-resizing-panels {
 }
 
 .nodes-map-hops-label {
-    font-family: "Press Start Local", monospace;
+    font-family: var(--font-display);
     font-size: 7px;
     color: #6a7a8a;
     white-space: nowrap;
@@ -1795,7 +1798,7 @@ body.is-resizing-panels {
     border: 1px solid var(--panel);
     border-radius: 0;
     padding: 7px 10px;
-    font-family: "Press Start Local", monospace;
+    font-family: var(--font-display);
     font-size: 9px;
     color: #a0b0b8;
     line-height: 1.6;
@@ -2010,7 +2013,7 @@ body.is-resizing-panels {
     padding: 10px 12px;
     background: #425745;
     color: #eff7f0;
-    font-family: "Press Start Local", monospace;
+    font-family: var(--font-display);
     font-size: 10px;
     line-height: 1;
 }
@@ -2022,7 +2025,7 @@ body.is-resizing-panels {
     padding: 0;
     display: inline-grid;
     place-items: center;
-    font-family: "Press Start Local", monospace;
+    font-family: var(--font-display);
     font-size: 10px;
     line-height: 1;
 }
@@ -2146,7 +2149,7 @@ body.is-resizing-panels {
 
 .ai-settings-toggle-row .ai-reply-label {
     font-size: 8px;
-    font-family: Consolas, "Cascadia Mono", "Courier New", monospace;
+    font-family: var(--font-body);
     letter-spacing: 0.02em;
     color: #c0c8d1;
 }
@@ -2226,7 +2229,7 @@ body.is-resizing-panels {
     border-left: 1px solid var(--edge-light);
     border-right: 1px solid var(--edge-dark);
     border-bottom: 1px solid var(--edge-dark);
-    font-family: "Press Start Local", monospace;
+    font-family: var(--font-display);
     font-size: 7px;
     line-height: 1.2;
     text-transform: uppercase;
@@ -2312,7 +2315,7 @@ body.is-resizing-panels {
 }
 
 .donate-chain {
-    font-family: "Press Start Local", monospace;
+    font-family: var(--font-display);
     font-size: 9px;
     line-height: 1.4;
     color: #d7e5f6;
@@ -2437,7 +2440,7 @@ body.is-resizing-panels {
     align-items: center;
     gap: 6px;
     padding: 6px 10px;
-    font-family: "Press Start Local", monospace;
+    font-family: var(--font-display);
     font-size: 8px;
     line-height: 1;
     text-transform: uppercase;
@@ -2535,7 +2538,7 @@ body.is-resizing-panels {
 
 .node-modal-details-toggle {
     padding: 6px 8px;
-    font-family: "Press Start Local", monospace;
+    font-family: var(--font-display);
     font-size: 9px;
     color: var(--muted);
     text-transform: uppercase;
@@ -2567,7 +2570,7 @@ body.is-resizing-panels {
 }
 
 .modal-label {
-    font-family: "Press Start Local", monospace;
+    font-family: var(--font-display);
     font-size: 9px;
     color: var(--muted);
     text-transform: uppercase;
@@ -2681,7 +2684,7 @@ body.is-resizing-panels {
 
 .node-neighbor-id {
     color: var(--ink);
-    font-family: Consolas, monospace;
+    font-family: var(--font-body);
 }
 
 .node-neighbor-snr {
@@ -2751,7 +2754,7 @@ body.is-resizing-panels {
 }
 
 .node-weather-lbl {
-    font-family: "Press Start Local", monospace;
+    font-family: var(--font-display);
     font-size: 6px;
     color: #5a7f9a;
     text-transform: uppercase;
@@ -3032,7 +3035,7 @@ textarea,
 .wallet-home-head h3,
 .wallet-screen-head h3 {
     margin: 0;
-    font-family: "Press Start Local", monospace;
+    font-family: var(--font-display);
     font-size: 10px;
     line-height: 1.4;
     text-transform: uppercase;
@@ -3049,7 +3052,7 @@ textarea,
 .wallet-back-button {
     min-width: 56px;
     padding: 5px 7px;
-    font-family: "Press Start Local", monospace;
+    font-family: var(--font-display);
     font-size: 7px;
     text-transform: uppercase;
     background: var(--panel);
@@ -3081,7 +3084,7 @@ textarea,
 }
 
 .wallet-balance-value {
-    font-family: "Press Start Local", monospace;
+    font-family: var(--font-display);
     font-size: 14px;
     line-height: 1.35;
     color: #f2f8ff;
@@ -3122,7 +3125,7 @@ textarea,
     height: 58px;
     padding: 0 2px;
     flex: 0 0 auto;
-    font-family: "Press Start Local", monospace;
+    font-family: var(--font-display);
     font-size: 7px;
     text-transform: uppercase;
     background: transparent;
@@ -3265,7 +3268,7 @@ textarea,
 .wallet-inline-action {
     min-width: 0;
     padding: 6px 10px;
-    font-family: "Press Start Local", monospace;
+    font-family: var(--font-display);
     font-size: 10px;
     text-transform: uppercase;
     background: #364a5a;
@@ -3449,7 +3452,7 @@ textarea,
     top: 0;
     background: var(--panel-2);
     color: #dbe6f4;
-    font-family: "Press Start Local", monospace;
+    font-family: var(--font-display);
     font-size: 7px;
     text-transform: uppercase;
 }
@@ -3737,7 +3740,7 @@ textarea,
 
 .wallet-fund-shortcut {
     padding: 3px 8px;
-    font-family: "Press Start Local", monospace;
+    font-family: var(--font-display);
     font-size: 8px;
     text-transform: uppercase;
     background: #2f586f;
@@ -3785,7 +3788,7 @@ textarea,
 
 .wallet-receive-tab {
     padding: 8px 6px;
-    font-family: "Press Start Local", monospace;
+    font-family: var(--font-display);
     font-size: 10px;
     text-transform: uppercase;
     background: var(--control-2);
@@ -3870,7 +3873,7 @@ textarea,
 
 .wallet-token-code {
     padding: 10px 12px;
-    font-family: monospace;
+    font-family: var(--font-body);
     font-size: 9.5px;
     color: #7aa8c2;
     word-break: break-all;
@@ -4548,7 +4551,7 @@ textarea,
     align-items: center;
     gap: 8px;
     font-size: 8px;
-    font-family: "Press Start Local", monospace;
+    font-family: var(--font-display);
     color: #d9e5f3;
     text-transform: uppercase;
     letter-spacing: 0.04em;
@@ -4649,7 +4652,7 @@ textarea,
 
 .device-meta-label {
     font-size: 8px;
-    font-family: "Press Start Local", monospace;
+    font-family: var(--font-display);
     color: #aeb9c6;
     text-transform: uppercase;
     letter-spacing: 0.02em;
@@ -4831,7 +4834,7 @@ textarea,
 
 .ai-reply-label {
     font-size: 9px;
-    font-family: "Press Start Local", monospace;
+    font-family: var(--font-display);
     color: var(--muted);
     text-transform: uppercase;
     letter-spacing: 0.04em;
@@ -4839,7 +4842,7 @@ textarea,
 
 .ai-reply-btn {
     font-size: 9px;
-    font-family: "Press Start Local", monospace;
+    font-family: var(--font-display);
     text-transform: uppercase;
     padding: 4px 10px;
     border-top: 2px solid var(--edge-light);
@@ -4910,7 +4913,7 @@ textarea,
 }
 
 .setup-title {
-    font-family: "Press Start Local", monospace;
+    font-family: var(--font-display);
     font-size: 14px;
     color: #ffffff;
     letter-spacing: 0.04em;
@@ -4918,7 +4921,7 @@ textarea,
 }
 
 .setup-link-state {
-    font-family: "Press Start Local", monospace;
+    font-family: var(--font-display);
     font-size: 8px;
     color: var(--danger);
 }
@@ -4939,7 +4942,7 @@ textarea,
 }
 
 .setup-footer {
-    font-family: "Press Start Local", monospace;
+    font-family: var(--font-display);
     font-size: 8px;
     color: var(--muted);
     text-align: center;
@@ -4961,7 +4964,7 @@ textarea,
     display: flex;
     align-items: center;
     gap: 10px;
-    font-family: "Press Start Local", monospace;
+    font-family: var(--font-display);
     font-size: 11px;
     color: var(--ink);
     background: transparent;
@@ -4991,7 +4994,7 @@ textarea,
 
 .setup-menu-item-desc {
     margin-left: auto;
-    font-family: Consolas, "Cascadia Mono", "Courier New", monospace;
+    font-family: var(--font-body);
     font-size: 10px;
     color: var(--muted);
     text-transform: none;
@@ -5004,7 +5007,7 @@ textarea,
 }
 
 .setup-sub-title {
-    font-family: "Press Start Local", monospace;
+    font-family: var(--font-display);
     font-size: 11px;
     color: #ffffff;
     margin-bottom: 12px;
@@ -5021,7 +5024,7 @@ textarea,
 }
 
 .setup-section-label {
-    font-family: "Press Start Local", monospace;
+    font-family: var(--font-display);
     font-size: 8px;
     color: var(--muted);
     text-transform: uppercase;
@@ -5041,7 +5044,7 @@ textarea,
 }
 
 .setup-field > span {
-    font-family: "Press Start Local", monospace;
+    font-family: var(--font-display);
     font-size: 7px;
     color: var(--muted);
     text-transform: uppercase;
@@ -5058,7 +5061,7 @@ textarea,
     border-bottom: 2px solid var(--edge-light);
     border-radius: 0;
     padding: 6px 8px;
-    font-family: Consolas, "Cascadia Mono", "Courier New", monospace;
+    font-family: var(--font-body);
     font-size: 11px;
 }
 
@@ -5069,7 +5072,7 @@ textarea,
 }
 
 .setup-btn {
-    font-family: "Press Start Local", monospace;
+    font-family: var(--font-display);
     font-size: 8px;
     color: var(--ink);
     background: var(--panel);
@@ -5130,7 +5133,7 @@ textarea,
 }
 
 .setup-toggle button {
-    font-family: "Press Start Local", monospace;
+    font-family: var(--font-display);
     font-size: 8px;
     color: var(--ink);
     background: var(--control-2);
@@ -5200,7 +5203,7 @@ textarea,
 }
 
 .setup-slider-value {
-    font-family: "Press Start Local", monospace;
+    font-family: var(--font-display);
     font-size: 10px;
     color: var(--success);
     min-width: 48px;
@@ -5209,7 +5212,7 @@ textarea,
 
 /* --- advanced fold --- */
 .setup-fold > summary {
-    font-family: "Press Start Local", monospace;
+    font-family: var(--font-display);
     font-size: 8px;
     color: var(--muted);
     text-transform: uppercase;
@@ -5243,7 +5246,7 @@ textarea,
 }
 
 .setup-row-name {
-    font-family: "Press Start Local", monospace;
+    font-family: var(--font-display);
     font-size: 9px;
     color: var(--ink);
     word-break: break-all;
@@ -5269,7 +5272,7 @@ textarea,
 /* --- contact type chips --- */
 .setup-chip {
     display: inline-block;
-    font-family: "Press Start Local", monospace;
+    font-family: var(--font-display);
     font-size: 7px;
     padding: 3px 6px;
     text-transform: uppercase;
@@ -5352,7 +5355,7 @@ textarea,
 }
 
 .setup-confirm-text {
-    font-family: "Press Start Local", monospace;
+    font-family: var(--font-display);
     font-size: 9px;
     color: #ffd7d7;
     margin-bottom: 8px;
@@ -5418,7 +5421,7 @@ textarea,
 }
 
 .trace-panel-title {
-    font-family: "Press Start Local", monospace;
+    font-family: var(--font-display);
     font-size: 9px;
     color: #ffffff;
 }
@@ -5438,14 +5441,14 @@ textarea,
 }
 
 .trace-hop-idx {
-    font-family: "Press Start Local", monospace;
+    font-family: var(--font-display);
     font-size: 8px;
     color: var(--muted);
     width: 26px;
 }
 
 .trace-hop-hash {
-    font-family: Consolas, "Cascadia Mono", "Courier New", monospace;
+    font-family: var(--font-body);
     color: var(--ink);
     width: 42px;
 }
@@ -5493,7 +5496,7 @@ textarea,
     display: inline-block;
     flex: 0 0 auto;
     width: auto;
-    font-family: "Press Start Local", monospace;
+    font-family: var(--font-display);
     /* 6px pixel-font strokes antialias into unreadable grey on bright chips */
     font-size: 8px;
     line-height: 1;
@@ -5532,7 +5535,7 @@ textarea,
 
 .node-action-tlm,
 .node-action-admin {
-    font-family: "Press Start Local", monospace;
+    font-family: var(--font-display);
     font-size: 6px;
 }
 
@@ -5563,13 +5566,13 @@ textarea,
 }
 
 .admin-console-title {
-    font-family: "Press Start Local", monospace;
+    font-family: var(--font-display);
     font-size: 9px;
     color: #ffffff;
 }
 
 .admin-console-target {
-    font-family: Consolas, "Cascadia Mono", "Courier New", monospace;
+    font-family: var(--font-body);
     font-size: 10px;
     color: var(--success);
     margin-right: auto;
@@ -5586,7 +5589,7 @@ textarea,
 }
 
 .admin-login-text {
-    font-family: "Press Start Local", monospace;
+    font-family: var(--font-display);
     font-size: 9px;
     color: var(--ink);
     margin-bottom: 6px;
@@ -5594,7 +5597,7 @@ textarea,
 }
 
 .admin-login-hint {
-    font-family: "Press Start Local", monospace;
+    font-family: var(--font-display);
     font-size: 7px;
     color: var(--muted);
     margin-bottom: 10px;
@@ -5616,7 +5619,7 @@ textarea,
     border-bottom: 2px solid var(--edge-light);
     border-radius: 0;
     padding: 6px 8px;
-    font-family: Consolas, "Cascadia Mono", "Courier New", monospace;
+    font-family: var(--font-body);
     font-size: 12px;
     letter-spacing: 2px;
 }
@@ -5626,7 +5629,7 @@ textarea,
 }
 
 .admin-login-status {
-    font-family: "Press Start Local", monospace;
+    font-family: var(--font-display);
     font-size: 8px;
     color: var(--muted);
     margin-top: 10px;
@@ -5670,7 +5673,7 @@ textarea,
     overflow-y: auto;
     background: #07120a;
     color: #7ecfaa;
-    font-family: Consolas, "Cascadia Mono", "Courier New", monospace;
+    font-family: var(--font-body);
     font-size: 11px;
     line-height: 1.45;
     padding: 8px;
@@ -5706,7 +5709,7 @@ textarea,
 }
 
 .admin-term-prompt {
-    font-family: Consolas, "Cascadia Mono", "Courier New", monospace;
+    font-family: var(--font-body);
     font-size: 12px;
     color: var(--success);
     align-self: center;
@@ -5723,7 +5726,7 @@ textarea,
     border-bottom: 2px solid var(--edge-light);
     border-radius: 0;
     padding: 6px 8px;
-    font-family: Consolas, "Cascadia Mono", "Courier New", monospace;
+    font-family: var(--font-body);
     font-size: 11px;
 }
 
@@ -5760,7 +5763,7 @@ textarea,
 }
 
 .chat-room-join-label {
-    font-family: "Press Start Local", monospace;
+    font-family: var(--font-display);
     font-size: 7px;
     color: var(--muted);
 }
@@ -5776,12 +5779,12 @@ textarea,
     border-bottom: 2px solid var(--edge-light);
     border-radius: 0;
     padding: 5px 8px;
-    font-family: Consolas, "Cascadia Mono", "Courier New", monospace;
+    font-family: var(--font-body);
     font-size: 11px;
 }
 
 .chat-room-join-status {
-    font-family: "Press Start Local", monospace;
+    font-family: var(--font-display);
     font-size: 7px;
     color: var(--muted);
 }
@@ -5791,7 +5794,7 @@ textarea,
 }
 
 .chat-room-notice {
-    font-family: "Press Start Local", monospace;
+    font-family: var(--font-display);
     font-size: 8px;
     color: var(--success);
     text-align: center;
@@ -5801,7 +5804,7 @@ textarea,
 /* --- contact path line (SETUP > CONTACTS) --- */
 .setup-row-path {
     flex-basis: 100%;
-    font-family: Consolas, "Cascadia Mono", "Courier New", monospace;
+    font-family: var(--font-body);
     font-size: 10px;
     color: var(--success);
 }
