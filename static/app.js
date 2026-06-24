@@ -4744,6 +4744,7 @@ chatForm.addEventListener("submit", async (event) => {
 });
 
 clearLogButton.addEventListener("click", async () => {
+  if (!confirm("Clear the event log? This cannot be undone.")) return;
   clearLogButton.disabled = true;
   try {
     await fetchJson("/api/logs/clear", {
@@ -4769,6 +4770,7 @@ copyAllLogButton.addEventListener("click", () => {
 
 if (clearChatButton) {
   clearChatButton.addEventListener("click", async () => {
+    if (!confirm("Clear this chat? This cannot be undone.")) return;
     clearChatButton.disabled = true;
     try {
       await clearActiveChat();
