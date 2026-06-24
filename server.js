@@ -3077,16 +3077,9 @@ async function runAgentCommand(command, slashCommand, { surface = "local", peerI
   if (!sourceLabels.length) {
     return "No knowledge sources available (offline or disabled in settings).";
   }
-  if (surface === "mesh") {
-    // Fire-and-forget interim packet; the real answer follows via the queue.
-    // Route it to the channel when the command came from one, else DM the sender.
-    const interim = `SEARCHING ${sourceLabels.join("+")}...`;
-    if (replyTo && replyTo.isDirectMessage === false) {
-      sendMeshReply("^all", interim, "local-ai", { channelIndex: replyTo.channelIndex, isDirectMessage: false }).catch(() => {});
-    } else if (peerId) {
-      sendMeshReply(peerId, interim).catch(() => {});
-    }
-  }
+  // No interim "SEARCHING ..." packet on the radio: keep the channel clean and
+  // only emit the final answer once inference finishes. The web UI still gets a
+  // local-only status event below.
   broadcast("agent_status", { command: command.name, stage: "searching" });
 
   // Mesh callers wait on radio airtime; local callers can afford slower models.
@@ -3139,6 +3132,20 @@ function parseLocalSlashCommand(prompt) {
     return { name: command, raw: normalized, agent: true };
   }
   return null;
+}
+
+// MeshCore group-channel messages have no per-sender address field, so the
+// originating client prepends its node name inline as "Node Name: message".
+// That prefix pushes the "/" off the front and hides the command. Strip a
+// leading "Name: " prefix, but only when what follows actually begins with a
+// "/" - so normal chat (and colons inside real messages) is left untouched.
+function stripChannelSenderPrefix(text) {
+  const s = String(text || "").trim();
+  if (s.startsWith("/")) {
+    return s;
+  }
+  const match = s.match(/^[^\n:]{1,40}:\s+(\/.*)$/s);
+  return match ? match[1] : s;
 }
 
 function findKnownNodeByQuery(query) {
@@ -5074,7 +5081,7 @@ async function handleInboundMesh(payload) {
     // Channel broadcast: react only to known /commands, and only on channels the
     // operator enabled for command listening (AI settings). The reply goes back
     // to the channel, not as a DM. Free-form channel chatter is ignored.
-    const channelPrompt = String(repairedText || "").trim();
+    const channelPrompt = stripChannelSenderPrefix(repairedText);
     const channelCommand = parseLocalSlashCommand(channelPrompt);
     if (channelCommand && getCommandChannels().includes(channelIndex)) {
       const senderType = String(knownNodes[String(payload.sender || "")]?.contactType || "").toLowerCase();
