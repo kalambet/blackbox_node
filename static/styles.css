@@ -13,6 +13,11 @@
     --panel-2: #2a2e33;
     --edge-light: #5f666f;
     --edge-dark: #121417;
+    /* neutral ramp — consolidates near-duplicate grays */
+    --ink-well: #151d27;
+    --control: #36404b;
+    --control-2: #444b54;
+    --edge-hi: #56606c;
     --ink: #e3e6ea;
     --muted: #a5adb7;
     --accent: #6f7a87;
@@ -80,7 +85,7 @@ body {
     justify-content: space-between;
     min-height: 36px;
     padding: 6px 10px;
-    background: linear-gradient(180deg, #4a5563 0%, #36404b 100%);
+    background: linear-gradient(180deg, #4a5563 0%, var(--control) 100%);
 }
 
 .titlebar-text {
@@ -107,7 +112,7 @@ body {
     border-left: 2px solid var(--edge-light);
     border-right: 2px solid var(--edge-dark);
     border-bottom: 2px solid var(--edge-dark);
-    background: #2d3238;
+    background: var(--panel);
     color: #eef3f8;
 }
 
@@ -271,7 +276,7 @@ body {
     font-family: "Press Start Local", monospace;
     font-size: 8px;
     text-transform: uppercase;
-    background: #444b54;
+    background: var(--control-2);
     color: var(--ink);
     border-top: 2px solid var(--edge-light);
     border-left: 2px solid var(--edge-light);
@@ -342,7 +347,7 @@ body {
     font-size: 7px;
     line-height: 1;
     text-transform: uppercase;
-    background: #444b54;
+    background: var(--control-2);
     color: var(--ink);
     border-top: 2px solid var(--edge-light);
     border-left: 2px solid var(--edge-light);
@@ -413,7 +418,7 @@ body {
     flex-direction: column;
     max-height: 180px;
     overflow-y: auto;
-    background: #151d27;
+    background: var(--ink-well);
     border: 1px solid var(--edge-light);
     border-top: none;
 }
@@ -427,7 +432,7 @@ body {
     font-size: 12px;
     color: var(--ink);
     user-select: none;
-    border-bottom: 1px solid #1e2a36;
+    border-bottom: 1px solid var(--bg);
 }
 
 .chat-peer-item:last-child {
@@ -662,13 +667,13 @@ h2 {
 
 @keyframes device-panel-pulse {
     0% {
-        background-color: #2a2e33;
+        background-color: var(--panel-2);
     }
     50% {
-        background-color: #31363d;
+        background-color: var(--panel);
     }
     100% {
-        background-color: #2a2e33;
+        background-color: var(--panel-2);
     }
 }
 
@@ -690,7 +695,7 @@ select {
     border-bottom: 2px solid var(--edge-light);
     border-radius: 0;
     padding: 7px 26px 7px 8px;
-    background: #1f2226;
+    background: var(--bg-2);
     color: var(--ink);
     font: inherit;
 }
@@ -848,13 +853,13 @@ select {
 
 .chat-bubble.user {
     justify-self: end;
-    background: #39414b;
+    background: var(--control);
     color: #f1f4f7;
 }
 
 .chat-bubble.ai {
     justify-self: start;
-    background: #161c24;
+    background: var(--ink-well);
     color: #d7e5f6;
 }
 
@@ -865,7 +870,7 @@ select {
 
 .chat-bubble.node {
     justify-self: start;
-    background: #181e28;
+    background: var(--ink-well);
     color: #dbe9f8;
 }
 
@@ -968,7 +973,7 @@ select {
     display: grid;
     gap: 4px;
     padding: 6px;
-    background: #171d24;
+    background: var(--ink-well);
     border-top: 2px solid var(--edge-light);
     border-left: 2px solid var(--edge-light);
     border-right: 2px solid var(--edge-dark);
@@ -984,7 +989,7 @@ select {
     max-height: 300px;
     display: flex;
     flex-direction: column;
-    background: #171d24;
+    background: var(--ink-well);
     border-top: 2px solid var(--edge-light);
     border-left: 2px solid var(--edge-light);
     border-right: 2px solid var(--edge-dark);
@@ -1025,7 +1030,7 @@ select {
     justify-items: start;
     padding: 7px 8px;
     text-align: left;
-    background: #26303a;
+    background: var(--panel-2);
     color: #e6eef7;
 }
 
@@ -1154,7 +1159,7 @@ textarea {
     border-bottom: 2px solid var(--edge-light);
     border-radius: 0;
     padding: 8px 9px;
-    background: #1f2226;
+    background: var(--bg-2);
     color: var(--ink);
 }
 
@@ -1169,7 +1174,7 @@ button {
     border-bottom: 2px solid var(--edge-dark);
     border-radius: 0;
     padding: 7px 10px;
-    background: #444b54;
+    background: var(--control-2);
     color: var(--ink);
     cursor: pointer;
 }
@@ -1231,7 +1236,7 @@ body.is-resizing-panels {
 }
 
 .node-item.weather {
-    background: #2b3138;
+    background: var(--panel-2);
 }
 
 .node-item.snapshot {
@@ -1280,7 +1285,7 @@ body.is-resizing-panels {
     padding: 4px 8px;
     border: 1px solid var(--edge-dark);
     border-radius: 4px;
-    background: #182028;
+    background: var(--ink-well);
     color: var(--fg);
     font: inherit;
     text-transform: none;
@@ -1493,7 +1498,7 @@ body.is-resizing-panels {
     padding: 4px 8px;
     border: 1px solid var(--edge-dark);
     border-radius: 4px;
-    background: #182028;
+    background: var(--ink-well);
     color: var(--fg);
     font: inherit;
     text-transform: none;
@@ -1508,7 +1513,7 @@ body.is-resizing-panels {
 }
 
 .nodes-map-container .leaflet-container {
-    background: #1a1f25;
+    background: var(--ink-well);
     font-family: "Press Start Local", monospace;
     font-size: 10px;
 }
@@ -1597,15 +1602,15 @@ body.is-resizing-panels {
 }
 
 .nodes-map-container .leaflet-popup-content-wrapper {
-    background: #252b32;
+    background: var(--panel-2);
     color: #c8d0d8;
-    border: 1px solid #3a4450;
+    border: 1px solid var(--control);
     border-radius: 2px;
     box-shadow: none;
 }
 
 .nodes-map-container .leaflet-popup-tip {
-    background: #252b32;
+    background: var(--panel-2);
 }
 
 .nodes-map-container .leaflet-popup-content {
@@ -1613,19 +1618,19 @@ body.is-resizing-panels {
 }
 
 .nodes-map-container .leaflet-control-zoom a {
-    background: #252b32;
+    background: var(--panel-2);
     color: #c8d0d8;
-    border-color: #3a4450;
+    border-color: var(--control);
 }
 
 .nodes-map-container .leaflet-control-zoom a:hover {
-    background: #3a4450;
+    background: var(--control);
 }
 
 .nodes-map-container .leaflet-control-attribution {
     background: rgba(26, 31, 37, 0.85) !important;
     color: #4a5a6a !important;
-    border-top: 1px solid #2a3540;
+    border-top: 1px solid var(--panel);
 }
 
 .nodes-map-container .leaflet-control-attribution a {
@@ -1678,9 +1683,9 @@ body.is-resizing-panels {
     gap: 7px;
     padding: 5px 8px;
     height: 28px;
-    border: 1px solid #3a4450;
+    border: 1px solid var(--control);
     border-radius: 0;
-    background: #252b32;
+    background: var(--panel-2);
     box-sizing: border-box;
 }
 
@@ -1786,7 +1791,7 @@ body.is-resizing-panels {
 
 .nodes-map-legend {
     background: rgba(18, 26, 32, 0.88);
-    border: 1px solid #2e3a45;
+    border: 1px solid var(--panel);
     border-radius: 0;
     padding: 7px 10px;
     font-family: "Press Start Local", monospace;
@@ -1827,7 +1832,7 @@ body.is-resizing-panels {
 }
 
 .nodes-map-legend-divider {
-    border-top: 1px solid #2e3a45;
+    border-top: 1px solid var(--panel);
     margin: 4px 0;
 }
 
@@ -2164,7 +2169,7 @@ body.is-resizing-panels {
     position: relative;
     overflow: hidden;
     padding: 8px 8px 8px 14px;
-    background: #20242a;
+    background: var(--bg-2);
     border-top: 1px solid var(--edge-light);
     border-left: 1px solid var(--edge-light);
     border-right: 1px solid var(--edge-dark);
@@ -2215,7 +2220,7 @@ body.is-resizing-panels {
 
 .model-tag {
     padding: 3px 6px;
-    background: #38404a;
+    background: var(--control);
     border-top: 1px solid var(--edge-light);
     border-left: 1px solid var(--edge-light);
     border-right: 1px solid var(--edge-dark);
@@ -2233,7 +2238,7 @@ body.is-resizing-panels {
 }
 
 .model-tag.available {
-    background: #3a3f47;
+    background: var(--control);
 }
 
 .model-actions {
@@ -2294,7 +2299,7 @@ body.is-resizing-panels {
     gap: 10px;
     align-items: center;
     padding: 8px;
-    background: #1f2329;
+    background: var(--bg-2);
     border-top: 1px solid var(--edge-light);
     border-left: 1px solid var(--edge-light);
     border-right: 1px solid var(--edge-dark);
@@ -2327,7 +2332,7 @@ body.is-resizing-panels {
     padding: 0;
     display: inline-grid;
     place-items: center;
-    background: #36404b;
+    background: var(--control);
 }
 
 .donate-copy-button svg {
@@ -2373,7 +2378,7 @@ body.is-resizing-panels {
     display: grid;
     gap: 6px;
     padding: 8px;
-    background: #242830;
+    background: var(--bg);
     border-top: 1px solid var(--edge-light);
     border-left: 1px solid var(--edge-light);
     border-right: 1px solid var(--edge-dark);
@@ -2520,7 +2525,7 @@ body.is-resizing-panels {
 }
 
 .node-modal-details {
-    background: #242830;
+    background: var(--bg);
     border-top: 1px solid var(--edge-light);
     border-left: 1px solid var(--edge-light);
     border-right: 1px solid var(--edge-dark);
@@ -2603,7 +2608,7 @@ body.is-resizing-panels {
 
 .modal-port {
     padding: 4px 8px;
-    background: #38404a;
+    background: var(--control);
     border-top: 1px solid var(--edge-light);
     border-left: 1px solid var(--edge-light);
     border-right: 1px solid var(--edge-dark);
@@ -2619,7 +2624,7 @@ body.is-resizing-panels {
     max-height: 240px;
     overflow: auto;
     padding: 8px;
-    background: #1f2226;
+    background: var(--bg-2);
     border-top: 1px solid var(--edge-dark);
     border-left: 1px solid var(--edge-dark);
     border-right: 1px solid var(--edge-light);
@@ -2646,7 +2651,7 @@ body.is-resizing-panels {
     display: grid;
     gap: 6px;
     padding: 8px 10px;
-    background: #1e2228;
+    background: var(--bg-2);
     border-top: 1px solid var(--edge-light);
     border-left: 1px solid var(--edge-light);
     border-right: 1px solid var(--edge-dark);
@@ -2664,7 +2669,7 @@ body.is-resizing-panels {
     align-items: center;
     gap: 4px;
     padding: 3px 8px;
-    background: #2d3540;
+    background: var(--panel);
     border-top: 1px solid var(--edge-light);
     border-left: 1px solid var(--edge-light);
     border-right: 1px solid var(--edge-dark);
@@ -2689,7 +2694,7 @@ body.is-resizing-panels {
     display: none;
     gap: 6px;
     padding: 8px 6px;
-    background: #1a1e24;
+    background: var(--ink-well);
     border-top: 1px solid #4a7fa0;
     border-left: 1px solid #4a7fa0;
     border-right: 1px solid #0d1318;
@@ -2716,7 +2721,7 @@ body.is-resizing-panels {
     gap: 3px;
     width: 58px;
     height: 58px;
-    background: #222831;
+    background: var(--bg);
     border-top: 1px solid #3d6b87;
     border-left: 1px solid #3d6b87;
     border-right: 1px solid #0d1318;
@@ -2826,7 +2831,7 @@ body.is-resizing-panels {
 @supports (-moz-appearance: none) {
     * {
         scrollbar-width: thin;
-        scrollbar-color: #566170 #1a1d21;
+        scrollbar-color: #566170 var(--ink-well);
     }
 }
 
@@ -2838,7 +2843,7 @@ body.is-resizing-panels {
 }
 
 *::-webkit-scrollbar-track {
-    background: #1f242b !important;
+    background: var(--bg-2) !important;
     border-top: 1px solid var(--edge-dark) !important;
     border-left: 1px solid var(--edge-dark) !important;
     border-right: 1px solid var(--edge-light) !important;
@@ -2848,7 +2853,7 @@ body.is-resizing-panels {
 }
 
 *::-webkit-scrollbar-thumb {
-    background: #4a525d !important;
+    background: var(--control-2) !important;
     border-top: 1px solid var(--edge-light) !important;
     border-left: 1px solid var(--edge-light) !important;
     border-right: 1px solid var(--edge-dark) !important;
@@ -2859,14 +2864,14 @@ body.is-resizing-panels {
 }
 
 *::-webkit-scrollbar-corner {
-    background: #1a1d21;
+    background: var(--ink-well);
 }
 
 *::-webkit-scrollbar-button {
     display: none;
     width: 12px;
     height: 14px;
-    background-color: #4a525d !important;
+    background-color: var(--control-2) !important;
     background-image: none !important;
     border-top: 1px solid var(--edge-light) !important;
     border-left: 1px solid var(--edge-light) !important;
@@ -3046,7 +3051,7 @@ textarea,
     font-family: "Press Start Local", monospace;
     font-size: 7px;
     text-transform: uppercase;
-    background: #303843;
+    background: var(--panel);
 }
 
 .wallet-overview {
@@ -3060,7 +3065,7 @@ textarea,
     display: grid;
     gap: 6px;
     padding: 14px 12px;
-    background: linear-gradient(180deg, #1d2733 0%, #151d27 100%);
+    background: linear-gradient(180deg, var(--bg) 0%, var(--ink-well) 100%);
     border-top: 1px solid #68788a;
     border-left: 1px solid #68788a;
     border-right: 1px solid #0d1117;
@@ -3098,7 +3103,7 @@ textarea,
 .wallet-toolbar {
     position: relative;
     z-index: 3;
-    background: linear-gradient(180deg, #1e2329 0%, #171b21 100%);
+    background: linear-gradient(180deg, var(--bg-2) 0%, var(--ink-well) 100%);
     border-top: 1px solid var(--edge-light);
     border-left: 1px solid var(--edge-light);
     border-right: 1px solid var(--edge-dark);
@@ -3181,7 +3186,7 @@ textarea,
     justify-content: space-between;
     gap: 8px;
     padding: 6px 10px;
-    background: #1a1e24;
+    background: var(--ink-well);
     border-top: 1px solid var(--edge-light);
     border-left: 1px solid var(--edge-light);
     border-right: 1px solid var(--edge-dark);
@@ -3217,7 +3222,7 @@ textarea,
     display: grid;
     gap: 12px;
     padding: 14px 12px;
-    background: #1f2329;
+    background: var(--bg-2);
     border-top: 1px solid var(--edge-light);
     border-left: 1px solid var(--edge-light);
     border-right: 1px solid var(--edge-dark);
@@ -3246,7 +3251,7 @@ textarea,
 
 .wallet-route-preview {
     padding: 6px 7px;
-    background: #171b20;
+    background: var(--ink-well);
     border-top: 1px solid var(--edge-dark);
     border-left: 1px solid var(--edge-dark);
     border-right: 1px solid var(--edge-light);
@@ -3388,7 +3393,7 @@ textarea,
 
 .wallet-request-form {
     padding: 6px;
-    background: #242830;
+    background: var(--bg);
     border-top: 1px solid var(--edge-light);
     border-left: 1px solid var(--edge-light);
     border-right: 1px solid var(--edge-dark);
@@ -3396,7 +3401,7 @@ textarea,
 }
 
 .wallet-section {
-    background: #242830;
+    background: var(--bg);
 }
 
 .wallet-history-shell {
@@ -3435,13 +3440,13 @@ textarea,
 .wallet-history-table td {
     text-align: left;
     padding: 4px 5px;
-    border-top: 1px solid #46505b;
+    border-top: 1px solid var(--control-2);
 }
 
 .wallet-history-table th {
     position: sticky;
     top: 0;
-    background: #2b3138;
+    background: var(--panel-2);
     color: #dbe6f4;
     font-family: "Press Start Local", monospace;
     font-size: 7px;
@@ -3532,7 +3537,7 @@ textarea,
     justify-content: center;
     width: 184px;
     height: 184px;
-    background: #151d27;
+    background: var(--ink-well);
     border-top: 1px solid var(--edge-dark);
     border-left: 1px solid var(--edge-dark);
     border-right: 1px solid var(--edge-light);
@@ -3555,7 +3560,7 @@ textarea,
     display: grid;
     gap: 8px;
     padding: 10px;
-    background: #1f2329;
+    background: var(--bg-2);
     border-top: 1px solid var(--edge-light);
     border-left: 1px solid var(--edge-light);
     border-right: 1px solid var(--edge-dark);
@@ -3569,7 +3574,7 @@ textarea,
     display: grid;
     gap: 6px;
     padding: 10px;
-    background: #1a2330;
+    background: var(--bg-2);
     border-top: 1px solid var(--edge-light);
     border-left: 1px solid var(--edge-light);
     border-right: 1px solid var(--edge-dark);
@@ -3601,7 +3606,7 @@ textarea,
     align-items: center;
     gap: 5px;
     padding: 5px 7px;
-    background: #171b20;
+    background: var(--ink-well);
     border-top: 1px solid var(--edge-dark);
     border-left: 1px solid var(--edge-dark);
     border-right: 1px solid var(--edge-light);
@@ -3669,7 +3674,7 @@ textarea,
     display: grid;
     gap: 8px;
     padding: 12px;
-    background: #1f2329;
+    background: var(--bg-2);
     border-top: 1px solid var(--edge-light);
     border-left: 1px solid var(--edge-light);
     border-right: 1px solid var(--edge-dark);
@@ -3687,7 +3692,7 @@ textarea,
     justify-content: space-between;
     gap: 8px;
     padding: 4px 6px;
-    background: #171c23;
+    background: var(--ink-well);
     border: 1px solid var(--edge-dark);
     border-radius: 3px;
 }
@@ -3719,8 +3724,8 @@ textarea,
 }
 
 .wallet-balance-card-secondary {
-    background: linear-gradient(180deg, #1a2224 0%, #111618 100%);
-    border-color: #3a4a52;
+    background: linear-gradient(180deg, var(--bg-2) 0%, #111618 100%);
+    border-color: var(--control-2);
 }
 
 .wallet-balance-value-row {
@@ -3782,7 +3787,7 @@ textarea,
     font-family: "Press Start Local", monospace;
     font-size: 10px;
     text-transform: uppercase;
-    background: #444b54;
+    background: var(--control-2);
     color: var(--ink);
     border: 1px solid var(--edge-dark);
     cursor: pointer;
@@ -3810,13 +3815,13 @@ textarea,
     content: "";
     flex: 1;
     height: 1px;
-    background: #3a4249;
+    background: var(--control);
 }
 
 .wallet-token-card {
     margin-top: 10px;
     border-radius: 8px;
-    background: #141a22;
+    background: var(--ink-well);
     border: 1px solid rgba(100, 160, 220, 0.15);
     overflow: hidden;
 }
@@ -3887,8 +3892,8 @@ textarea,
     align-items: center;
     gap: 8px;
     padding: 5px 6px;
-    background: #1f2329;
-    border-top: 1px solid #3a4249;
+    background: var(--bg-2);
+    border-top: 1px solid var(--control);
     font-size: 9px;
 }
 
@@ -3913,8 +3918,8 @@ textarea,
 .cashu-inventory-panel {
     margin-top: 8px;
     padding: 8px;
-    background: #151d27;
-    border: 1px solid #2d3944;
+    background: var(--ink-well);
+    border: 1px solid var(--panel);
     border-radius: 10px;
 }
 
@@ -3969,8 +3974,8 @@ textarea,
     flex-wrap: wrap;
     gap: 8px;
     padding: 7px 8px;
-    background: #1f2329;
-    border: 1px solid #313d47;
+    background: var(--bg-2);
+    border: 1px solid var(--control);
     border-radius: 8px;
 }
 
@@ -3996,7 +4001,7 @@ textarea,
     white-space: nowrap;
     padding: 3px 6px;
     border: 1px solid #394754;
-    background: #18212b;
+    background: var(--bg-2);
     border-radius: 999px;
 }
 
@@ -4053,7 +4058,7 @@ textarea,
 
 #cashuSendSlider::-webkit-slider-runnable-track {
     height: 10px;
-    background: #1f242b;
+    background: var(--bg-2);
     border-top: 1px solid var(--edge-dark);
     border-left: 1px solid var(--edge-dark);
     border-right: 1px solid var(--edge-light);
@@ -4077,7 +4082,7 @@ textarea,
 
 #cashuSendSlider::-moz-range-track {
     height: 10px;
-    background: #1f242b;
+    background: var(--bg-2);
     border-top: 1px solid var(--edge-dark);
     border-left: 1px solid var(--edge-dark);
     border-right: 1px solid var(--edge-light);
@@ -4087,7 +4092,7 @@ textarea,
 
 #cashuSendSlider::-moz-range-progress {
     height: 10px;
-    background: #1f242b;
+    background: var(--bg-2);
     border-top: 1px solid var(--edge-dark);
     border-left: 1px solid var(--edge-dark);
     border-right: 1px solid var(--edge-light);
@@ -4308,7 +4313,7 @@ textarea,
 }
 
 .wallet-testmode-card {
-    border-color: #3a4a52;
+    border-color: var(--control-2);
 }
 
 .wallet-warning-modal-panel {
@@ -4362,7 +4367,7 @@ textarea,
     align-items: center;
     width: 36px;
     height: 20px;
-    background: #2a3038;
+    background: var(--panel-2);
     border-top: 1px solid var(--edge-dark);
     border-left: 1px solid var(--edge-dark);
     border-right: 1px solid var(--edge-light);
@@ -4471,8 +4476,8 @@ textarea,
     justify-content: space-between;
     gap: 8px;
     padding: 6px 8px;
-    background: #1a1e24;
-    border-top: 1px solid #3a4249;
+    background: var(--ink-well);
+    border-top: 1px solid var(--control);
     font-size: 9px;
 }
 
@@ -4503,7 +4508,7 @@ textarea,
     background:
         linear-gradient(rgba(255, 255, 255, 0.018) 1px, transparent 1px),
         linear-gradient(90deg, rgba(255, 255, 255, 0.018) 1px, transparent 1px),
-        linear-gradient(180deg, #343941 0%, #2d3239 100%);
+        linear-gradient(180deg, var(--panel) 0%, var(--panel) 100%);
     background-size:
         18px 18px,
         18px 18px,
@@ -4514,7 +4519,7 @@ textarea,
     align-items: flex-start;
     margin-bottom: 10px;
     padding-bottom: 9px;
-    border-bottom: 1px solid #15191e;
+    border-bottom: 1px solid var(--ink-well);
     box-shadow: 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
@@ -4530,11 +4535,11 @@ textarea,
     display: grid;
     gap: 9px;
     padding: 10px;
-    background: #242932;
-    border-top: 1px solid #56606c;
-    border-left: 1px solid #56606c;
-    border-right: 1px solid #14181d;
-    border-bottom: 1px solid #14181d;
+    background: var(--bg);
+    border-top: 1px solid var(--edge-hi);
+    border-left: 1px solid var(--edge-hi);
+    border-right: 1px solid var(--edge-dark);
+    border-bottom: 1px solid var(--edge-dark);
 }
 
 .device-meta-section-label {
@@ -4627,7 +4632,7 @@ textarea,
     justify-content: center;
     font-size: 12px;
     color: #d8e7f7;
-    background: #37414c;
+    background: var(--control);
     opacity: 0.9;
 }
 
@@ -4663,7 +4668,7 @@ textarea,
     box-sizing: border-box;
     min-height: 32px;
     padding: 7px 8px;
-    background: #181d23;
+    background: var(--ink-well);
     border-top-width: 1px;
     border-left-width: 1px;
     border-right-width: 1px;
@@ -4709,11 +4714,11 @@ textarea,
     position: sticky;
     bottom: 0;
     padding: 10px;
-    background: #2d3239;
-    border-top: 1px solid #56606c;
-    border-left: 1px solid #56606c;
-    border-right: 1px solid #14181d;
-    border-bottom: 1px solid #14181d;
+    background: var(--panel);
+    border-top: 1px solid var(--edge-hi);
+    border-left: 1px solid var(--edge-hi);
+    border-right: 1px solid var(--edge-dark);
+    border-bottom: 1px solid var(--edge-dark);
 }
 
 .device-meta-actions button {
@@ -4840,7 +4845,7 @@ textarea,
     border-left: 2px solid var(--edge-light);
     border-right: 2px solid var(--edge-dark);
     border-bottom: 2px solid var(--edge-dark);
-    background: #444b54;
+    background: var(--control-2);
     color: var(--ink);
     cursor: pointer;
     letter-spacing: 0.04em;
@@ -4899,7 +4904,7 @@ textarea,
     align-items: center;
     gap: 12px;
     padding: 10px 12px;
-    background: linear-gradient(180deg, #4a5563 0%, #36404b 100%);
+    background: linear-gradient(180deg, #4a5563 0%, var(--control) 100%);
     border-bottom: 2px solid var(--edge-dark);
 }
 
@@ -5127,7 +5132,7 @@ textarea,
     font-family: "Press Start Local", monospace;
     font-size: 8px;
     color: var(--ink);
-    background: #444b54;
+    background: var(--control-2);
     border-top: 2px solid var(--edge-light);
     border-left: 2px solid var(--edge-light);
     border-right: 2px solid var(--edge-dark);
@@ -5407,7 +5412,7 @@ textarea,
     align-items: center;
     justify-content: space-between;
     padding: 8px 10px;
-    background: linear-gradient(180deg, #4a5563 0%, #36404b 100%);
+    background: linear-gradient(180deg, #4a5563 0%, var(--control) 100%);
     border-bottom: 2px solid var(--edge-dark);
 }
 
@@ -5552,7 +5557,7 @@ textarea,
     align-items: center;
     gap: 10px;
     padding: 8px 10px;
-    background: linear-gradient(180deg, #4a5563 0%, #36404b 100%);
+    background: linear-gradient(180deg, #4a5563 0%, var(--control) 100%);
     border-bottom: 2px solid var(--edge-dark);
 }
 
