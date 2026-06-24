@@ -4837,15 +4837,17 @@ textarea,
 
 .ai-settings-command-channels {
     display: flex;
-    flex-wrap: wrap;
-    gap: 8px 14px;
+    flex-direction: column;
+    gap: 8px;
     margin-top: 8px;
 }
 
 .ai-settings-channel-toggle {
-    display: inline-flex;
+    display: flex;
     align-items: center;
-    gap: 8px;
+    justify-content: space-between;
+    gap: 12px;
+    width: 100%;
 }
 
 /* AI reply toggle row */
