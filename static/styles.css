@@ -222,7 +222,7 @@ body {
     min-width: 0;
     padding: 4px 7px;
     font-family: var(--font-display);
-    font-size: 10px;
+    font-size: 8px;
     line-height: 1;
     text-transform: uppercase;
 }
@@ -304,7 +304,7 @@ body {
     min-width: 0;
     padding: 6px 8px;
     font-family: var(--font-display);
-    font-size: 10px;
+    font-size: 8px;
     text-transform: uppercase;
     background: var(--control-2);
     color: var(--ink);
@@ -358,7 +358,7 @@ body {
 
 .chat-peer-field span {
     font-family: var(--font-display);
-    font-size: 10px;
+    font-size: 8px;
     text-transform: uppercase;
     color: var(--muted);
 }
@@ -374,7 +374,7 @@ body {
     min-width: 0;
     padding: 6px 8px;
     font-family: var(--font-display);
-    font-size: 10px;
+    font-size: 7px;
     line-height: 1;
     text-transform: uppercase;
     background: var(--control-2);
@@ -783,7 +783,7 @@ select {
 
 .chat-reply-label {
     font-family: var(--font-display);
-    font-size: 10px;
+    font-size: 9px;
     color: var(--muted);
     text-transform: uppercase;
 }
@@ -1031,7 +1031,7 @@ select {
 .nodepick-header {
     padding: 6px 8px 4px;
     font-family: var(--font-display);
-    font-size: 10px;
+    font-size: 7px;
     text-transform: uppercase;
     color: var(--muted);
     border-bottom: 1px solid var(--edge-dark);
@@ -1604,7 +1604,7 @@ body.is-resizing-panels {
 
 .nodes-map-label {
     font-family: var(--font-display);
-    font-size: 10px;
+    font-size: 8px;
     color: #e0e6ed;
     text-shadow:
         0 1px 3px #000,
@@ -1614,7 +1614,7 @@ body.is-resizing-panels {
 
 .nodes-map-popup {
     font-family: var(--font-display);
-    font-size: 10px;
+    font-size: 9px;
     line-height: 1.5;
     color: #c8d0d8;
     display: flex;
@@ -1679,7 +1679,7 @@ body.is-resizing-panels {
     display: block;
     padding: 5px 8px;
     font-family: var(--font-display);
-    font-size: 10px;
+    font-size: 7px;
     line-height: 1;
     background: var(--bg-2);
     color: #6a7a8a;
@@ -1723,7 +1723,7 @@ body.is-resizing-panels {
 
 .nodes-map-hops-label {
     font-family: var(--font-display);
-    font-size: 10px;
+    font-size: 7px;
     color: #6a7a8a;
     white-space: nowrap;
     text-transform: uppercase;
@@ -1827,7 +1827,7 @@ body.is-resizing-panels {
     border-radius: 0;
     padding: 7px 10px;
     font-family: var(--font-display);
-    font-size: 10px;
+    font-size: 9px;
     color: #a0b0b8;
     line-height: 1.6;
     pointer-events: none;
@@ -2258,7 +2258,7 @@ body.is-resizing-panels {
     border-right: 1px solid var(--edge-dark);
     border-bottom: 1px solid var(--edge-dark);
     font-family: var(--font-display);
-    font-size: 10px;
+    font-size: 7px;
     line-height: 1.2;
     text-transform: uppercase;
     color: #d7e5f6;
@@ -2344,7 +2344,7 @@ body.is-resizing-panels {
 
 .donate-chain {
     font-family: var(--font-display);
-    font-size: 10px;
+    font-size: 9px;
     line-height: 1.4;
     color: #d7e5f6;
     text-transform: uppercase;
@@ -2470,7 +2470,7 @@ body.is-resizing-panels {
     gap: 6px;
     padding: 6px 10px;
     font-family: var(--font-display);
-    font-size: 10px;
+    font-size: 8px;
     line-height: 1;
     text-transform: uppercase;
     background: var(--panel-2);
@@ -2568,7 +2568,7 @@ body.is-resizing-panels {
 .node-modal-details-toggle {
     padding: 6px 8px;
     font-family: var(--font-display);
-    font-size: 10px;
+    font-size: 9px;
     color: var(--muted);
     text-transform: uppercase;
     cursor: pointer;
@@ -2600,7 +2600,7 @@ body.is-resizing-panels {
 
 .modal-label {
     font-family: var(--font-display);
-    font-size: 10px;
+    font-size: 9px;
     color: var(--muted);
     text-transform: uppercase;
 }
@@ -2784,7 +2784,7 @@ body.is-resizing-panels {
 
 .node-weather-lbl {
     font-family: var(--font-display);
-    font-size: 10px;
+    font-size: 6px;
     color: #5a7f9a;
     text-transform: uppercase;
     letter-spacing: 0.04em;
@@ -3082,7 +3082,7 @@ textarea,
     min-width: 56px;
     padding: 5px 7px;
     font-family: var(--font-display);
-    font-size: 10px;
+    font-size: 7px;
     text-transform: uppercase;
     background: var(--panel);
 }
@@ -3155,7 +3155,7 @@ textarea,
     padding: 0 2px;
     flex: 0 0 auto;
     font-family: var(--font-display);
-    font-size: 10px;
+    font-size: 7px;
     text-transform: uppercase;
     background: transparent;
     color: #6a7d91;
@@ -3482,7 +3482,7 @@ textarea,
     background: var(--panel-2);
     color: #dbe6f4;
     font-family: var(--font-display);
-    font-size: 10px;
+    font-size: 7px;
     text-transform: uppercase;
 }
 
@@ -3770,7 +3770,7 @@ textarea,
 .wallet-fund-shortcut {
     padding: 3px 8px;
     font-family: var(--font-display);
-    font-size: 10px;
+    font-size: 8px;
     text-transform: uppercase;
     background: #2f586f;
     color: #f0f8ff;
@@ -4579,7 +4579,7 @@ textarea,
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 10px;
+    font-size: 8px;
     font-family: var(--font-display);
     color: #d9e5f3;
     text-transform: uppercase;
@@ -4680,7 +4680,7 @@ textarea,
 }
 
 .device-meta-label {
-    font-size: 10px;
+    font-size: 8px;
     font-family: var(--font-display);
     color: #aeb9c6;
     text-transform: uppercase;
@@ -4862,7 +4862,7 @@ textarea,
 }
 
 .ai-reply-label {
-    font-size: 10px;
+    font-size: 9px;
     font-family: var(--font-display);
     color: var(--muted);
     text-transform: uppercase;
@@ -4870,7 +4870,7 @@ textarea,
 }
 
 .ai-reply-btn {
-    font-size: 10px;
+    font-size: 9px;
     font-family: var(--font-display);
     text-transform: uppercase;
     padding: 4px 10px;
@@ -4960,7 +4960,7 @@ textarea,
 
 .setup-link-state {
     font-family: var(--font-display);
-    font-size: 10px;
+    font-size: 8px;
     color: var(--danger);
 }
 
@@ -4981,7 +4981,7 @@ textarea,
 
 .setup-footer {
     font-family: var(--font-display);
-    font-size: 10px;
+    font-size: 8px;
     color: var(--muted);
     text-align: center;
     padding: 8px;
@@ -5063,7 +5063,7 @@ textarea,
 
 .setup-section-label {
     font-family: var(--font-display);
-    font-size: 10px;
+    font-size: 8px;
     color: var(--muted);
     text-transform: uppercase;
     margin-bottom: 8px;
@@ -5083,7 +5083,7 @@ textarea,
 
 .setup-field > span {
     font-family: var(--font-display);
-    font-size: 10px;
+    font-size: 7px;
     color: var(--muted);
     text-transform: uppercase;
 }
@@ -5111,7 +5111,7 @@ textarea,
 
 .setup-btn {
     font-family: var(--font-display);
-    font-size: 10px;
+    font-size: 8px;
     color: var(--ink);
     background: var(--panel);
     border-top: 2px solid var(--edge-light);
@@ -5172,7 +5172,7 @@ textarea,
 
 .setup-toggle button {
     font-family: var(--font-display);
-    font-size: 10px;
+    font-size: 8px;
     color: var(--ink);
     background: var(--control-2);
     border-top: 2px solid var(--edge-light);
@@ -5251,7 +5251,7 @@ textarea,
 /* --- advanced fold --- */
 .setup-fold > summary {
     font-family: var(--font-display);
-    font-size: 10px;
+    font-size: 8px;
     color: var(--muted);
     text-transform: uppercase;
     cursor: pointer;
@@ -5285,7 +5285,7 @@ textarea,
 
 .setup-row-name {
     font-family: var(--font-display);
-    font-size: 10px;
+    font-size: 9px;
     color: var(--ink);
     word-break: break-all;
 }
@@ -5311,7 +5311,7 @@ textarea,
 .setup-chip {
     display: inline-block;
     font-family: var(--font-display);
-    font-size: 10px;
+    font-size: 7px;
     padding: 3px 6px;
     text-transform: uppercase;
     color: #0d0f11;
@@ -5394,7 +5394,7 @@ textarea,
 
 .setup-confirm-text {
     font-family: var(--font-display);
-    font-size: 10px;
+    font-size: 9px;
     color: #ffd7d7;
     margin-bottom: 8px;
 }
@@ -5460,7 +5460,7 @@ textarea,
 
 .trace-panel-title {
     font-family: var(--font-display);
-    font-size: 10px;
+    font-size: 9px;
     color: #ffffff;
 }
 
@@ -5480,7 +5480,7 @@ textarea,
 
 .trace-hop-idx {
     font-family: var(--font-display);
-    font-size: 10px;
+    font-size: 8px;
     color: var(--muted);
     width: 26px;
 }
@@ -5536,7 +5536,7 @@ textarea,
     width: auto;
     font-family: var(--font-display);
     /* 6px pixel-font strokes antialias into unreadable grey on bright chips */
-    font-size: 10px;
+    font-size: 8px;
     line-height: 1;
     padding: 3px 4px 2px;
     margin-right: 5px;
@@ -5574,7 +5574,7 @@ textarea,
 .node-action-tlm,
 .node-action-admin {
     font-family: var(--font-display);
-    font-size: 10px;
+    font-size: 6px;
 }
 
 /* ============================================================
@@ -5605,7 +5605,7 @@ textarea,
 
 .admin-console-title {
     font-family: var(--font-display);
-    font-size: 10px;
+    font-size: 9px;
     color: #ffffff;
 }
 
@@ -5628,7 +5628,7 @@ textarea,
 
 .admin-login-text {
     font-family: var(--font-display);
-    font-size: 10px;
+    font-size: 9px;
     color: var(--ink);
     margin-bottom: 6px;
     word-break: break-all;
@@ -5636,7 +5636,7 @@ textarea,
 
 .admin-login-hint {
     font-family: var(--font-display);
-    font-size: 10px;
+    font-size: 7px;
     color: var(--muted);
     margin-bottom: 10px;
 }
@@ -5668,7 +5668,7 @@ textarea,
 
 .admin-login-status {
     font-family: var(--font-display);
-    font-size: 10px;
+    font-size: 8px;
     color: var(--muted);
     margin-top: 10px;
     min-height: 12px;
@@ -5802,7 +5802,7 @@ textarea,
 
 .chat-room-join-label {
     font-family: var(--font-display);
-    font-size: 10px;
+    font-size: 7px;
     color: var(--muted);
 }
 
@@ -5823,7 +5823,7 @@ textarea,
 
 .chat-room-join-status {
     font-family: var(--font-display);
-    font-size: 10px;
+    font-size: 7px;
     color: var(--muted);
 }
 
@@ -5833,7 +5833,7 @@ textarea,
 
 .chat-room-notice {
     font-family: var(--font-display);
-    font-size: 10px;
+    font-size: 8px;
     color: var(--success);
     text-align: center;
     padding: 8px 4px;
