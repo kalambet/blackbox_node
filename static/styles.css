@@ -266,8 +266,8 @@ body {
 }
 
 .chat-mode-btn.is-active {
-  background: var(--panel);
-  color: #ffffff;
+  background: #1a2e1a;
+  color: #4caf50;
   border-top: 2px solid var(--edge-dark);
   border-left: 2px solid var(--edge-dark);
   border-right: 2px solid var(--edge-light);
@@ -336,8 +336,8 @@ body {
 }
 
 .chat-peer-filter-btn.is-active {
-  background: var(--panel);
-  color: #ffffff;
+  background: #1a2e1a;
+  color: #4caf50;
   border-top: 2px solid var(--edge-dark);
   border-left: 2px solid var(--edge-dark);
   border-right: 2px solid var(--edge-light);
@@ -5052,8 +5052,8 @@ textarea,
 }
 
 .setup-toggle button.is-active {
-  color: #ffffff;
-  background: var(--panel);
+  color: #4caf50;
+  background: #1a2e1a;
   border-top: 2px solid var(--edge-dark);
   border-left: 2px solid var(--edge-dark);
   border-right: 2px solid var(--edge-light);
