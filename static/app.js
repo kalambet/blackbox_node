@@ -289,8 +289,8 @@ const CHAT_LAST_PEER_STORAGE_KEY = "blackbox.chat.lastPeer";
 const CHAT_LAST_CHANNEL_STORAGE_KEY = "blackbox.chat.lastChannel";
 const CHAT_CHANNELS_STORAGE_KEY = "blackbox.chat.channels";
 const CHAT_PLACEHOLDER_AI = "Write a message. Enter to send, Shift+Enter for new line.";
-const CHAT_PLACEHOLDER_DM = "Write a DM to selected node. Enter to send, Shift+Enter for new line.";
-const CHAT_PLACEHOLDER_CHANS = "Write a channel message. Enter to send, Shift+Enter for new line.";
+const CHAT_PLACEHOLDER_DM = "Write a DM to selected node. Ctrl+Enter to send, Enter for new line.";
+const CHAT_PLACEHOLDER_CHANS = "Write a channel message. Ctrl+Enter to send, Enter for new line.";
 const CHAT_AI_COMMANDS = new Set(["/summary", "/weather", "/activity", "/battery", "/nodecheck"]);
 const DEFAULT_CHAT_CHANNELS = [
   { id: "primary", name: "Primary Channel", channelIndex: 0 },
@@ -4792,6 +4792,10 @@ chatText.addEventListener("keydown", (event) => {
     closeNodeCheckPicker();
   }
   if (event.key === "Enter" && !event.shiftKey) {
+    // Mesh (DM/CHANS) messages can't be unsent — require Ctrl/Cmd+Enter; AI keeps Enter-to-send
+    if (chatState.mode !== CHAT_MODE_AI && !(event.ctrlKey || event.metaKey)) {
+      return;
+    }
     event.preventDefault();
     chatForm.requestSubmit();
   }

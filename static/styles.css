@@ -639,7 +639,8 @@ h2 {
 }
 
 .device-status.offline .device-dot {
-    background: var(--danger);
+    background: transparent;
+    border: 2px solid var(--danger);
 }
 
 .device-status.loading .device-dot {
@@ -1330,7 +1331,8 @@ body.is-resizing-panels {
 }
 
 .node-item.offline .node-dot {
-    background: #8b4a4a;
+    background: transparent;
+    border: 2px solid #8b4a4a;
 }
 
 .node-main {
@@ -2448,7 +2450,8 @@ body.is-resizing-panels {
     background: var(--success);
 }
 .node-dot--offline {
-    background: #8b4a4a;
+    background: transparent;
+    border: 2px solid #8b4a4a;
 }
 
 .node-modal-head-actions {
