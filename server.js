@@ -5068,18 +5068,22 @@ async function handleInboundMesh(payload) {
     return;
   }
 
-  if (!isMeshAiReplyEnabled()) {
-    return;
-  }
-
-  if (String(repairedText || "").trim().toLowerCase() === "!reset") {
-    sessions.delete(payload.sender);
-    const resetText = "Context reset.";
-    await sendMeshReply(payload.sender, resetText);
-    return;
-  }
-
   const prompt = String(repairedText || "").trim();
+
+  if (prompt.toLowerCase() === "!reset") {
+    sessions.delete(payload.sender);
+    await sendMeshReply(payload.sender, "Context reset.");
+    return;
+  }
+
+  // A DM that begins with a known command (/wiki, /weather, /summary, ...) is an
+  // explicit request and is always processed, even when free-form AI auto-reply
+  // is off. A DM that is not a known command only gets a reply when meshAiReply
+  // is enabled; otherwise it is just delivered as a plain direct message.
+  const slashCommand = parseLocalSlashCommand(prompt);
+  if (!slashCommand && !isMeshAiReplyEnabled()) {
+    return;
+  }
 
   const reply = await generateMeshReply(payload.sender, prompt);
   await sendMeshReply(payload.sender, reply);
