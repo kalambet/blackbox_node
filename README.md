@@ -422,17 +422,6 @@ On launch:
 
 ---
 
-## Credits & Donate
+## Credits
 
-This fork stands on the shoulders of the original **[blackbox_node](https://github.com/wadadawadada/blackbox_node)** by [@wadadawadada](https://github.com/wadadawadada) — huge thanks for building the foundation this MeshCore-native version is built on. All donations below go to the original author; please support their work.
-
-If this project is useful to you, consider supporting development:
-
-Sponsor on GitHub: [github.com/sponsors/wadadawadada](https://github.com/sponsors/wadadawadada)
-
-| Chain | Address |
-|---|---|
-| BTC | `bc1p3p87l267hte2dgg60jjt7w9xk8vfcjenr534yya0hedhet4l4fvq2x2svp` |
-| XMR | `44QwjAWN4wR8KNqALAfcnjSMhb1Yj7AKCVCBMJFuzr6N8WYW23cDQNd3RiSvMEX2dyUQ5z6pP8sJ2YcmJXS4SLkc24E5SJM` |
-| ETH | `0xaA01e4F453d5ae9903EebeABA803f3388D20d024` |
-| SOL | `4xgvfwv3TTt1SnavP5okbjBBsfRmoLpdeQKXguVdXheF` |
+This fork stands on the shoulders of the original **[blackbox_node](https://github.com/wadadawadada/blackbox_node)** by [@wadadawadada](https://github.com/wadadawadada) — huge thanks for building the foundation this MeshCore-native version is built on. All donations below go to the original author; please support their work: https://github.com/wadadawadada/blackbox_node#donate
