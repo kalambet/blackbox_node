@@ -4,11 +4,13 @@
 
 Website: [blackbox.host](https://blackbox.host/)
 
+> 🙏 **Credit & disclosure:** Blackbox Node was originally created by **[@wadadawadada](https://github.com/wadadawadada)** — see the upstream project at **[wadadawadada/blackbox_node](https://github.com/wadadawadada/blackbox_node)**. This repository is a MeshCore-native fork; all credit for the original project belongs to the upstream author. If you find it useful, please consider [sponsoring their work](https://github.com/sponsors/wadadawadada).
+
 Blackbox Node is an offline-first command post for [MeshCore](https://meshcore.co.uk/) **LoRa** networks. It combines a fully local LLM, end-to-end encrypted radio messaging with delivery confirmation, telemetry, and **Bitcoin + Cashu** payments in one self-hosted web UI.
 
 It is designed for **off-grid communications**, **disaster response**, **field operations**, **community mesh networks**, and anyone who wants local AI and situational awareness without cloud infrastructure, without a cell tower, and without a remote server.
 
-> **This is a MeshCore-native fork** of the original [wadadawadada/blackbox_node](https://github.com/wadadawadada/blackbox_node) (which targets Meshtastic). It was rebuilt around MeshCore, drops TAK support, and adds agent commands and remote/split inference. See [How this fork differs from upstream](#how-this-fork-differs-from-upstream).
+> **MeshCore-native:** rebuilt around MeshCore (upstream targets Meshtastic), drops TAK support, and adds agent commands and remote/split inference — see [How this fork differs from upstream](#how-this-fork-differs-from-upstream).
 
 ---
 
