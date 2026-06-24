@@ -6147,7 +6147,7 @@ function connectEvents() {
   [
     "advert", "pending_contact", "telemetry", "admin_reply", "admin_session",
     "admin_cmd_sent", "path_reset", "advert_sent", "contact_shared",
-    "contact_uri", "channels", "device_stats", "node_status", "time_set",
+    "contact_uri", "channels", "default_flood_scope", "device_stats", "node_status", "time_set",
     "rebooting", "factory_reset_done", "private_key", "private_key_imported",
     "device_meta_saved",
   ].forEach((name) => {
