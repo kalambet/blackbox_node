@@ -251,6 +251,7 @@ const DEFAULT_AI_SETTINGS = Object.freeze({
   meshMaxTokens: 120,
   inferenceMode: DEFAULT_INFERENCE_MODE,
   remoteUrl: "",
+  commandChannels: [],
 });
 const MESH_PACKET_MAX_BYTES = 120;
 const MESH_PACKET_MAX_BYTES_CASHU = 72;
@@ -2321,7 +2322,18 @@ function normalizeAiSettings(input) {
     meshMaxTokens: clampInteger(source.meshMaxTokens, 32, 512, DEFAULT_AI_SETTINGS.meshMaxTokens),
     inferenceMode: source.inferenceMode === "remote" ? "remote" : DEFAULT_INFERENCE_MODE,
     remoteUrl: normalizeRemoteLlmUrl(source.remoteUrl).slice(0, 300),
+    commandChannels: Array.isArray(source.commandChannels)
+      ? [...new Set(source.commandChannels
+          .map((n) => Number.parseInt(n, 10))
+          .filter((n) => Number.isInteger(n) && n >= 0 && n <= 7))].sort((a, b) => a - b)
+      : [],
   };
+}
+
+// Channel indexes the node reacts to /command messages on (in addition to DMs).
+function getCommandChannels() {
+  const list = appSettings?.aiSettings?.commandChannels;
+  return Array.isArray(list) ? list : [];
 }
 
 function getAiSettingsPayload() {
@@ -3053,7 +3065,7 @@ async function runAgentPipeline(command, question, surface, deadline, collected)
   throw new Error("no results");
 }
 
-async function runAgentCommand(command, slashCommand, { surface = "local", peerId = null } = {}) {
+async function runAgentCommand(command, slashCommand, { surface = "local", peerId = null, replyTo = null } = {}) {
   const question = slashCommand.raw.slice(slashCommand.name.length).trim();
   if (!question) {
     return `Usage: ${command.helpText}`;
@@ -3065,9 +3077,15 @@ async function runAgentCommand(command, slashCommand, { surface = "local", peerI
   if (!sourceLabels.length) {
     return "No knowledge sources available (offline or disabled in settings).";
   }
-  if (surface === "mesh" && peerId) {
+  if (surface === "mesh") {
     // Fire-and-forget interim packet; the real answer follows via the queue.
-    sendMeshReply(peerId, `SEARCHING ${sourceLabels.join("+")}...`).catch(() => {});
+    // Route it to the channel when the command came from one, else DM the sender.
+    const interim = `SEARCHING ${sourceLabels.join("+")}...`;
+    if (replyTo && replyTo.isDirectMessage === false) {
+      sendMeshReply("^all", interim, "local-ai", { channelIndex: replyTo.channelIndex, isDirectMessage: false }).catch(() => {});
+    } else if (peerId) {
+      sendMeshReply(peerId, interim).catch(() => {});
+    }
   }
   broadcast("agent_status", { command: command.name, stage: "searching" });
 
@@ -3386,7 +3404,7 @@ async function generateSlashCommandReply(peerId, slashCommand, options = {}) {
   const surface = options.surface === "mesh" ? "mesh" : "local";
   const agentCommand = getAgentCommand(slashCommand.name);
   if (agentCommand) {
-    return runAgentCommand(agentCommand, slashCommand, { surface, peerId });
+    return runAgentCommand(agentCommand, slashCommand, { surface, peerId, replyTo: options.replyTo });
   }
   if (slashCommand.name === "/help") {
     return buildSlashCommandFallback("/help", {});
@@ -4832,10 +4850,10 @@ function sanitizeMeshReply(text) {
   return s || "No response.";
 }
 
-async function generateMeshReply(peerId, prompt) {
+async function generateMeshReply(peerId, prompt, options = {}) {
   const slashCommand = parseLocalSlashCommand(prompt);
   if (slashCommand) {
-    return generateSlashCommandReply(peerId, slashCommand, { surface: "mesh" });
+    return generateSlashCommandReply(peerId, slashCommand, { surface: "mesh", replyTo: options.replyTo });
   }
 
   const history = getHistory(peerId);
@@ -5053,6 +5071,22 @@ async function handleInboundMesh(payload) {
   });
 
   if (!isDirectMessage) {
+    // Channel broadcast: react only to known /commands, and only on channels the
+    // operator enabled for command listening (AI settings). The reply goes back
+    // to the channel, not as a DM. Free-form channel chatter is ignored.
+    const channelPrompt = String(repairedText || "").trim();
+    const channelCommand = parseLocalSlashCommand(channelPrompt);
+    if (channelCommand && getCommandChannels().includes(channelIndex)) {
+      const senderType = String(knownNodes[String(payload.sender || "")]?.contactType || "").toLowerCase();
+      if (senderType !== "room" && senderType !== "repeater") {
+        const reply = await generateMeshReply(payload.sender, channelPrompt, {
+          replyTo: { isDirectMessage: false, channelIndex },
+        });
+        if (reply) {
+          await sendMeshReply("^all", reply, "local-ai", { channelIndex, isDirectMessage: false });
+        }
+      }
+    }
     return;
   }
 

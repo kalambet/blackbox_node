@@ -80,6 +80,8 @@ const aiSettingsLocalMaxTokens = document.getElementById("aiSettingsLocalMaxToke
 const aiSettingsMeshTemperature = document.getElementById("aiSettingsMeshTemperature");
 const aiSettingsMeshTopP = document.getElementById("aiSettingsMeshTopP");
 const aiSettingsMeshMaxTokens = document.getElementById("aiSettingsMeshMaxTokens");
+const aiSettingsCommandChannels = document.getElementById("aiSettingsCommandChannels");
+let aiCommandChannelsLoaded = [];
 const helpModal = document.getElementById("helpModal");
 const helpModalClose = document.getElementById("helpModalClose");
 const helpDonateButton = document.getElementById("helpDonateButton");
@@ -1027,6 +1029,11 @@ function applyRadioChannelsToChat(radioChannels) {
   if (chatState.mode === CHAT_MODE_CHANS) {
     renderChannelChat();
   }
+  // Keep the AI-settings command-channel checkboxes in sync if that modal is open.
+  if (aiSettingsModal && !aiSettingsModal.classList.contains("hidden")) {
+    const hasBoxes = aiSettingsCommandChannels?.querySelector('input[type="checkbox"]');
+    renderAiCommandChannels(hasBoxes ? getAiCommandChannelSelection() : aiCommandChannelsLoaded);
+  }
 }
 
 function renderChatEmpty(message) {
@@ -1928,6 +1935,47 @@ function setAiSettingsToggle(button, enabled) {
   button.classList.toggle("ai-reply-btn--on", enabled);
 }
 
+// Render a checkbox per configured radio channel for command-listening.
+function renderAiCommandChannels(selected) {
+  if (!aiSettingsCommandChannels) {
+    return;
+  }
+  const selectedSet = new Set((selected || []).map((n) => Number(n)).filter((n) => Number.isInteger(n)));
+  const channels = (chatState.channels || []).filter((c) => Number.isInteger(c.channelIndex));
+  aiSettingsCommandChannels.innerHTML = "";
+  if (!channels.length) {
+    const empty = document.createElement("div");
+    empty.className = "device-status-text";
+    empty.textContent = latestMeshtasticConnected
+      ? "No channels configured. Add them in SETUP → Channels."
+      : "Connect the radio to list channels.";
+    aiSettingsCommandChannels.appendChild(empty);
+    return;
+  }
+  channels.forEach((ch) => {
+    const label = document.createElement("label");
+    label.className = "ai-settings-channel-toggle";
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.value = String(ch.channelIndex);
+    cb.checked = selectedSet.has(ch.channelIndex);
+    const span = document.createElement("span");
+    span.textContent = `CH${ch.channelIndex} ${ch.name || ""}`.trim();
+    label.append(cb, span);
+    aiSettingsCommandChannels.appendChild(label);
+  });
+}
+
+function getAiCommandChannelSelection() {
+  if (!aiSettingsCommandChannels) {
+    return [];
+  }
+  return Array.from(aiSettingsCommandChannels.querySelectorAll('input[type="checkbox"]'))
+    .filter((cb) => cb.checked)
+    .map((cb) => Number(cb.value))
+    .filter((n) => Number.isInteger(n));
+}
+
 function renderAiSettings(payload) {
   latestAiSettingsPayload = payload;
   const settings = payload?.settings || {};
@@ -1941,6 +1989,8 @@ function renderAiSettings(payload) {
   aiSettingsMeshTemperature.value = settings.meshTemperature ?? 0.1;
   aiSettingsMeshTopP.value = settings.meshTopP ?? 0.6;
   aiSettingsMeshMaxTokens.value = settings.meshMaxTokens ?? 120;
+  aiCommandChannelsLoaded = Array.isArray(settings.commandChannels) ? settings.commandChannels : [];
+  renderAiCommandChannels(aiCommandChannelsLoaded);
   toggleAiInstructionsInput();
 }
 
@@ -1954,6 +2004,10 @@ function openAiSettingsModal() {
   aiSettingsModal.classList.remove("hidden");
   aiSettingsModal.setAttribute("aria-hidden", "false");
   aiSettingsStatusText.textContent = "Loading AI settings...";
+  // Refresh the radio's channel slots so the command-channel list is current.
+  if (latestMeshtasticConnected) {
+    meshCommand("get_channels").catch(() => {});
+  }
   if (latestAiSettingsPayload) {
     renderAiSettings(latestAiSettingsPayload);
     aiSettingsStatusText.textContent = "Choose custom instructions, telemetry context, and generation controls.";
@@ -1981,6 +2035,7 @@ function collectAiSettingsForm() {
     meshTemperature: Number(aiSettingsMeshTemperature.value),
     meshTopP: Number(aiSettingsMeshTopP.value),
     meshMaxTokens: Number(aiSettingsMeshMaxTokens.value),
+    commandChannels: getAiCommandChannelSelection(),
   };
 }
 

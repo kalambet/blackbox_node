@@ -4714,6 +4714,21 @@ textarea,
   }
 }
 
+.ai-settings-command-channels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin-top: 8px;
+}
+
+.ai-settings-channel-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  cursor: pointer;
+}
+
 /* AI reply toggle row */
 .ai-reply-row {
   display: flex;
