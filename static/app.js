@@ -4542,6 +4542,12 @@ function renderDeviceStatus(status) {
 function renderModelStatus(llm) {
   latestLlmStatus = llm || {};
   const remote = String(llm.mode || "").startsWith("remote");
+  // The host owns the model in remote mode: disable model management (the dropdown
+  // is handled below). AI Settings (the gear) stays enabled - its generation params
+  // and command-channel config still apply to remote inference.
+  if (openModelManagerButton) {
+    openModelManagerButton.disabled = remote;
+  }
   const availableModels = llm.availableModels || [];
   const currentModel = llm.currentModel || llm.model || "";
   modelSelect.innerHTML = "";
