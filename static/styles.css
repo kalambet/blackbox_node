@@ -256,8 +256,8 @@ body {
   font-family: "Press Start Local", monospace;
   font-size: 8px;
   text-transform: uppercase;
-  background: var(--bg-2);
-  color: var(--muted);
+  background: #444b54;
+  color: var(--ink);
   border-top: 2px solid var(--edge-light);
   border-left: 2px solid var(--edge-light);
   border-right: 2px solid var(--edge-dark);
