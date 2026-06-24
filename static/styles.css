@@ -4714,26 +4714,6 @@ textarea,
   }
 }
 
-.chat-channel-modal-panel {
-  width: min(360px, calc(100vw - 32px));
-}
-
-.chat-channel-modal-form {
-  display: grid;
-  gap: 12px;
-  padding: 4px 0;
-}
-
-.chat-channel-modal-form input {
-  width: 100%;
-  box-sizing: border-box;
-}
-
-.chat-channel-modal-form button {
-  width: 100%;
-  margin-top: 4px;
-}
-
 /* AI reply toggle row */
 .ai-reply-row {
   display: flex;

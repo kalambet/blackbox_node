@@ -41,7 +41,6 @@ const chatChannelDropdown = document.getElementById("chatChannelDropdown");
 const chatChannelTrigger = document.getElementById("chatChannelTrigger");
 const chatChannelLabel = document.getElementById("chatChannelLabel");
 const chatChannelList = document.getElementById("chatChannelList");
-const chatChannelCreateButton = document.getElementById("chatChannelCreateButton");
 const nodesMapModal = document.getElementById("nodesMapModal");
 const nodesMapClose = document.getElementById("nodesMapClose");
 const nodesMapContainer = document.getElementById("nodesMapContainer");
@@ -234,13 +233,6 @@ const setupCloseButton = document.getElementById("setupCloseButton");
 const tracePanel = document.getElementById("tracePanel");
 const tracePanelBody = document.getElementById("tracePanelBody");
 const tracePanelClose = document.getElementById("tracePanelClose");
-const chatChannelModal = document.getElementById("chatChannelModal");
-const chatChannelModalClose = document.getElementById("chatChannelModalClose");
-const chatChannelModalForm = document.getElementById("chatChannelModalForm");
-const chatChannelModalName = document.getElementById("chatChannelModalName");
-const chatChannelModalIndex = document.getElementById("chatChannelModalIndex");
-const chatChannelModalStatus = document.getElementById("chatChannelModalStatus");
-const chatChannelModalSave = document.getElementById("chatChannelModalSave");
 const settingsMintUrlInput = document.getElementById("settingsMintUrlInput");
 const settingsSetMintButton = document.getElementById("settingsSetMintButton");
 const settingsMintStatus = document.getElementById("settingsMintStatus");
@@ -1002,33 +994,6 @@ function renderChatChannelList() {
   }
 }
 
-function createCustomChatChannel(nameInput, indexInput) {
-  const name = String(nameInput || "").trim().slice(0, 32);
-  if (!name) {
-    throw new Error("Channel name is required.");
-  }
-  const channelIndex = normalizeChannelIndex(indexInput, -1);
-  if (channelIndex < 0) {
-    throw new Error("Channel index must be between 0 and 7.");
-  }
-  if (chatState.channels.some((channel) => channel.channelIndex === channelIndex)) {
-    throw new Error(`Channel ch${channelIndex} already exists.`);
-  }
-  const channel = {
-    id: `ch-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
-    name,
-    channelIndex,
-  };
-  chatState.channels = [...chatState.channels, channel];
-  persistChatChannels(chatState.channels);
-  populateChatChannelSelect();
-  setChatChannelSelection(channel.id, { persist: true });
-  renderChatChannelList();
-  if (chatState.mode === CHAT_MODE_CHANS) {
-    renderChannelChat();
-  }
-}
-
 // Mirror the radio's configured channel slots into the CHANS selector so a
 // channel added in SETUP shows up here. The radio is the source of truth when
 // connected; if it reports no configured channels we leave the current list.
@@ -1062,27 +1027,6 @@ function applyRadioChannelsToChat(radioChannels) {
   if (chatState.mode === CHAT_MODE_CHANS) {
     renderChannelChat();
   }
-}
-
-function openChatChannelModal() {
-  if (!chatChannelModal) {
-    return;
-  }
-  chatChannelModal.classList.remove("hidden");
-  chatChannelModal.setAttribute("aria-hidden", "false");
-  if (chatChannelModalForm) chatChannelModalForm.reset();
-  if (chatChannelModalIndex) chatChannelModalIndex.value = "0";
-  if (chatChannelModalStatus) chatChannelModalStatus.textContent = "";
-  if (chatChannelModalSave) chatChannelModalSave.disabled = false;
-  setTimeout(() => chatChannelModalName?.focus(), 0);
-}
-
-function closeChatChannelModal() {
-  if (!chatChannelModal) {
-    return;
-  }
-  chatChannelModal.classList.add("hidden");
-  chatChannelModal.setAttribute("aria-hidden", "true");
 }
 
 function renderChatEmpty(message) {
@@ -4922,15 +4866,6 @@ if (chatChannelTrigger) {
   });
 }
 
-if (chatChannelCreateButton) {
-  chatChannelCreateButton.addEventListener("click", (event) => {
-    event.stopPropagation();
-    if (chatChannelList) {
-      chatChannelList.hidden = true;
-    }
-    openChatChannelModal();
-  });
-}
 
 if (chatPeerCashuButton) {
   chatPeerCashuButton.addEventListener("click", () => {
@@ -5979,39 +5914,6 @@ if (walletTestModeWarningModal) {
     }
   });
 }
-if (chatChannelModalClose) {
-  chatChannelModalClose.addEventListener("click", closeChatChannelModal);
-}
-if (chatChannelModal) {
-  chatChannelModal.addEventListener("click", (event) => {
-    if (event.target.hasAttribute("data-close-chat-channel-modal")) {
-      closeChatChannelModal();
-    }
-  });
-}
-if (chatChannelModalForm) {
-  chatChannelModalForm.addEventListener("submit", (event) => {
-    event.preventDefault();
-    if (chatChannelModalStatus) {
-      chatChannelModalStatus.textContent = "";
-    }
-    if (chatChannelModalSave) {
-      chatChannelModalSave.disabled = true;
-    }
-    try {
-      createCustomChatChannel(chatChannelModalName?.value || "", chatChannelModalIndex?.value || "");
-      closeChatChannelModal();
-    } catch (error) {
-      if (chatChannelModalStatus) {
-        chatChannelModalStatus.textContent = error.message || "Failed to create channel.";
-      }
-    } finally {
-      if (chatChannelModalSave) {
-        chatChannelModalSave.disabled = false;
-      }
-    }
-  });
-}
 modelManagerModal.addEventListener("click", (event) => {
   if (event.target.hasAttribute("data-close-model-manager")) {
     closeModelManager();
@@ -6119,10 +6021,6 @@ nodeModal.addEventListener("click", (event) => {
 });
 document.addEventListener("keydown", (event) => {
   handleWalletModalFocusTrap(event);
-  if (event.key === "Escape" && chatChannelModal && !chatChannelModal.classList.contains("hidden")) {
-    closeChatChannelModal();
-    return;
-  }
   if (event.key === "Escape" && walletTestModeWarningModal && !walletTestModeWarningModal.classList.contains("hidden")) {
     cancelWalletTestModeWarning();
     return;
