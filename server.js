@@ -5595,6 +5595,7 @@ function startBridge() {
             message.type === "contact_shared" ||
             message.type === "contact_uri" ||
             message.type === "channels" ||
+            message.type === "default_flood_scope" ||
             message.type === "device_stats" ||
             message.type === "node_status" ||
             message.type === "repeater_mode" ||

@@ -6459,6 +6459,8 @@ const setupState = {
   exportedKey: null,
   lastContactUri: null,
   inferenceCfg: null,
+  floodScope: null,
+  channelAddOpen: false,
   statusText: "",
 };
 
@@ -6609,8 +6611,11 @@ function setupEnterGroup(groupId) {
   setupState.cursor = Math.max(0, SETUP_GROUPS.findIndex((g) => g.id === groupId));
   setupRenderGroup();
   if (groupId === "connection") setupLoadPorts();
-  if (groupId === "channels" && latestMeshtasticConnected) {
-    meshCommand("get_channels").catch((e) => setupSetStatus(e.message));
+  if (groupId === "channels") {
+    setupState.channelAddOpen = false;
+    if (latestMeshtasticConnected) {
+      meshCommand("get_channels").catch((e) => setupSetStatus(e.message));
+    }
   }
 }
 
@@ -7129,6 +7134,31 @@ function setupRenderRadio() {
   ));
   root.appendChild(repeatSection);
 
+  const scopeSection = setupEl("div", "setup-section");
+  scopeSection.appendChild(setupEl("div", "setup-section-label", "DEFAULT SCOPE (REGION)"));
+  const scopeInput = setupInput("text", setupState.floodScope || "", "de-bebb (blank = global)", { maxlength: 30 });
+  scopeInput.id = "setupScopeInput";
+  const scopeGrid = setupEl("div", "setup-grid");
+  scopeGrid.appendChild(setupField("SCOPE", scopeInput));
+  scopeSection.appendChild(scopeGrid);
+  const scopeRow = setupEl("div", "setup-btn-row");
+  scopeRow.appendChild(setupButton("SET SCOPE", async () => {
+    try {
+      await meshCommand("set_default_flood_scope", { scope: scopeInput.value.trim() });
+      setupSetStatus("Scope sent.");
+    } catch (error) {
+      setupSetStatus(`scope failed: ${error.message}`);
+    }
+  }));
+  scopeSection.appendChild(scopeRow);
+  scopeSection.appendChild(setupEl("div", "setup-row-meta",
+    "LIMITS HOW FAR YOUR FLOODS PROPAGATE; REPEATERS ALLOW-LIST REGIONS. BLANK = GLOBAL."));
+  root.appendChild(scopeSection);
+  // Load the device's current scope once (the event updates the field by id).
+  if (setupState.floodScope === null && latestMeshtasticConnected) {
+    meshCommand("get_default_flood_scope").catch(() => {});
+  }
+
   const advanced = setupEl("details", "setup-fold");
   advanced.appendChild(setupEl("summary", "", "ADVANCED TUNING"));
   const advSection = setupEl("div", "setup-section");
@@ -7180,7 +7210,17 @@ function buildChannelUri(name, secretHex) {
   return `meshcore://channel?name=${encodeURIComponent(name || "")}&secret=${secretHex || ""}`;
 }
 
+// A slot counts as configured if it has a name or a non-zero secret.
+function channelIsConfigured(channel) {
+  const name = String(channel?.name || "").trim();
+  const secret = String(channel?.secret || "").replace(/0/g, "");
+  return name !== "" || secret !== "";
+}
+
 function setupRenderChannels() {
+  if (setupState.channelAddOpen) {
+    return setupRenderChannelAdd();
+  }
   const root = setupGroupShell("CHANNELS");
 
   const qrSlot = setupEl("div", "");
@@ -7190,10 +7230,12 @@ function setupRenderChannels() {
     root.appendChild(setupEl("div", "setup-row-meta", latestMeshtasticConnected
       ? "Loading channel slots from device..."
       : "Radio offline - connect first to edit channels."));
-  } else if (!setupState.channels.length) {
-    root.appendChild(setupEl("div", "setup-row-meta", "No channel slots reported."));
   } else {
-    setupState.channels.forEach((channel) => {
+    const configured = setupState.channels.filter(channelIsConfigured);
+    if (!configured.length) {
+      root.appendChild(setupEl("div", "setup-row-meta", "No channels configured. Use ADD CHANNEL."));
+    }
+    configured.forEach((channel) => {
       const row = setupEl("div", "setup-row");
       row.appendChild(setupEl("span", "setup-row-name", `CH${channel.index}`));
       const nameInput = setupInput("text", channel.name || "", "channel name", { maxlength: 32 });
@@ -7220,6 +7262,15 @@ function setupRenderChannels() {
         const uri = buildChannelUri(nameInput.value.trim(), secretInput.value.trim());
         setupShowQr(qrSlot, uri, `CH${channel.index} ${nameInput.value.trim() || "(unnamed)"}`);
       }));
+      actions.appendChild(setupButton("REMOVE", async () => {
+        try {
+          // Clear the slot: empty name + zero key marks it unused.
+          await meshCommand("set_channel", { index: channel.index, name: "", secret: "0".repeat(32) });
+          setupSetStatus(`CH${channel.index} removed.`);
+        } catch (error) {
+          setupSetStatus(`remove failed: ${error.message}`);
+        }
+      }, "danger"));
       row.appendChild(actions);
       root.appendChild(row);
     });
@@ -7227,36 +7278,103 @@ function setupRenderChannels() {
 
   root.appendChild(qrSlot);
 
-  const importSection = setupEl("div", "setup-section");
-  importSection.appendChild(setupEl("div", "setup-section-label", "IMPORT URI"));
-  const importInput = setupInput("text", "", "meshcore://...");
-  const importGrid = setupEl("div", "setup-grid");
-  importGrid.appendChild(setupField("PASTE MESHCORE URI", importInput));
-  importSection.appendChild(importGrid);
-  const importRow = setupEl("div", "setup-btn-row");
-  importRow.appendChild(setupButton("IMPORT", async () => {
-    const uri = importInput.value.trim();
-    if (!uri.startsWith("meshcore://")) {
-      setupSetStatus("Expected a meshcore:// URI.");
-      return;
-    }
-    try {
-      await meshCommand("import_contact", { uri });
-      setupSetStatus("Import sent to device.");
-    } catch (error) {
-      setupSetStatus(`import failed: ${error.message}`);
-    }
-  }, "primary"));
-  importSection.appendChild(importRow);
-  root.appendChild(importSection);
-
   root.appendChild(setupFooterRow([
+    setupButton("ADD CHANNEL", () => {
+      if (!Array.isArray(setupState.channels)) {
+        setupSetStatus("Channel slots not loaded yet - connect the radio.");
+        return;
+      }
+      if (!setupState.channels.some((ch) => !channelIsConfigured(ch))) {
+        setupSetStatus("No free channel slots.");
+        return;
+      }
+      setupState.channelAddOpen = true;
+      setupRenderChannels();
+    }, "primary"),
     setupButton("RELOAD SLOTS", () => {
       setupState.channels = null;
       setupRenderChannels();
       meshCommand("get_channels").catch((e) => setupSetStatus(e.message));
     }),
     setupButton("BACK", setupExitGroup),
+  ]));
+}
+
+function setupRenderChannelAdd() {
+  const root = setupGroupShell("CHANNELS / ADD");
+  const freeSlot = (setupState.channels || []).find((ch) => !channelIsConfigured(ch));
+
+  const section = setupEl("div", "setup-section");
+  const nameInput = setupInput("text", "", "#dwebcamp", { maxlength: 32 });
+  const nameGrid = setupEl("div", "setup-grid");
+  nameGrid.appendChild(setupField("NAME", nameInput));
+  section.appendChild(nameGrid);
+
+  // Key mode: DERIVE (hash channel, key from name) | PRIVATE (explicit secret).
+  let mode = "derive";
+  const toggle = setupEl("div", "setup-toggle");
+  const deriveBtn = setupEl("button", "", "DERIVE KEY");
+  deriveBtn.type = "button";
+  const privateBtn = setupEl("button", "", "PRIVATE KEY");
+  privateBtn.type = "button";
+  const privateWrap = setupEl("div", "");
+  privateWrap.style.marginTop = "10px";
+  const deriveHint = setupEl("div", "setup-row-meta",
+    "KEY = sha256(NAME)[:16] ON THE DEVICE. COMMUNITY CHANNELS START WITH '#' - USE THE EXACT NAME.");
+  const applyToggle = () => {
+    deriveBtn.classList.toggle("is-active", mode === "derive");
+    privateBtn.classList.toggle("is-active", mode === "private");
+    privateWrap.style.display = mode === "private" ? "" : "none";
+    deriveHint.style.display = mode === "derive" ? "" : "none";
+  };
+  deriveBtn.addEventListener("click", () => { mode = "derive"; applyToggle(); });
+  privateBtn.addEventListener("click", () => { mode = "private"; applyToggle(); });
+  toggle.append(deriveBtn, privateBtn);
+  section.appendChild(setupEl("div", "setup-section-label", "KEY"));
+  section.appendChild(toggle);
+
+  const secretInput = setupInput("text", "", "secret (hex, 32 chars)");
+  const privateGrid = setupEl("div", "setup-grid");
+  privateGrid.appendChild(setupField("PRIVATE KEY", secretInput));
+  privateWrap.appendChild(privateGrid);
+  section.appendChild(privateWrap);
+  section.appendChild(deriveHint);
+  applyToggle();
+  root.appendChild(section);
+
+  root.appendChild(setupEl("div", "setup-row-meta",
+    freeSlot ? `WILL USE SLOT CH${freeSlot.index}` : "NO FREE SLOT"));
+
+  const addBtn = setupButton("ADD", async () => {
+    const name = nameInput.value.trim();
+    if (!name) { setupSetStatus("Enter a channel name."); return; }
+    if (!freeSlot) { setupSetStatus("No free channel slots."); return; }
+    let secret = "";
+    if (mode === "private") {
+      secret = secretInput.value.trim().toLowerCase();
+      if (!/^[0-9a-f]{32}$/.test(secret)) {
+        setupSetStatus("Private key must be 32 hex characters.");
+        return;
+      }
+    }
+    addBtn.disabled = true;
+    try {
+      // Derive mode sends a blank secret; the bridge passes None so the device
+      // derives the key from the name.
+      await meshCommand("set_channel", { index: freeSlot.index, name, secret });
+      setupState.channelAddOpen = false;
+      setupRenderChannels();
+      setupSetStatus(`Added ${name} to CH${freeSlot.index}.`);
+    } catch (error) {
+      setupSetStatus(`add failed: ${error.message}`);
+    } finally {
+      addBtn.disabled = false;
+    }
+  }, "primary");
+
+  root.appendChild(setupFooterRow([
+    addBtn,
+    setupButton("BACK", () => { setupState.channelAddOpen = false; setupRenderChannels(); }),
   ]));
 }
 
@@ -7556,6 +7674,12 @@ function setupHandleSseEvent(name, payload) {
       setupState.channels = Array.isArray(payload?.channels) ? payload.channels : [];
       if (setupState.open && setupState.group === "channels") setupRenderChannels();
       break;
+    case "default_flood_scope": {
+      setupState.floodScope = typeof payload?.scope === "string" ? payload.scope : "";
+      const el = document.getElementById("setupScopeInput");
+      if (el && document.activeElement !== el) el.value = setupState.floodScope;
+      break;
+    }
     case "contact_uri":
       setupState.lastContactUri = payload || null;
       if (setupState.open && setupState.group === "contacts") setupRenderContacts();

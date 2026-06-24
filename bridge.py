@@ -625,6 +625,26 @@ class Bridge:
             return
         await self.cmd_get_channels({})
 
+    async def cmd_get_default_flood_scope(self, payload: dict[str, Any]) -> None:
+        result = await self.mc.commands.get_default_flood_scope()
+        if result is None or result.is_error():
+            emit_error(f"get_default_flood_scope failed: {getattr(result, 'payload', None)}")
+            return
+        data = result.payload or {}
+        # The device stores the scope name with a leading '#'; show it without.
+        name = str(data.get("scope_name") or "").lstrip("#")
+        emit("default_flood_scope", {"scope": name, "scopeKey": sanitize(data.get("scope_key"))})
+
+    async def cmd_set_default_flood_scope(self, payload: dict[str, Any]) -> None:
+        # Blank / "*" / "0" disables the scope (global flood). The lib adds the
+        # leading '#' and derives the scope key as sha256("#"+scope)[:16].
+        scope = str(payload.get("scope") or "").strip()
+        result = await self.mc.commands.set_default_flood_scope(scope or None)
+        if result is not None and result.is_error():
+            emit_error(f"set_default_flood_scope failed: {result.payload}")
+            return
+        await self.cmd_get_default_flood_scope({})
+
     async def cmd_get_device_info(self, payload: dict[str, Any]) -> None:
         commands = self.mc.commands
         battery = await commands.get_bat()
