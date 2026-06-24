@@ -1029,10 +1029,10 @@ function applyRadioChannelsToChat(radioChannels) {
   if (chatState.mode === CHAT_MODE_CHANS) {
     renderChannelChat();
   }
-  // Keep the AI-settings command-channel checkboxes in sync if that modal is open.
+  // Keep the AI-settings command-channel toggles in sync if that modal is open.
   if (aiSettingsModal && !aiSettingsModal.classList.contains("hidden")) {
-    const hasBoxes = aiSettingsCommandChannels?.querySelector('input[type="checkbox"]');
-    renderAiCommandChannels(hasBoxes ? getAiCommandChannelSelection() : aiCommandChannelsLoaded);
+    const hasToggles = aiSettingsCommandChannels?.querySelector("button[data-channel-index]");
+    renderAiCommandChannels(hasToggles ? getAiCommandChannelSelection() : aiCommandChannelsLoaded);
   }
 }
 
@@ -1935,7 +1935,8 @@ function setAiSettingsToggle(button, enabled) {
   button.classList.toggle("ai-reply-btn--on", enabled);
 }
 
-// Render a checkbox per configured radio channel for command-listening.
+// Render an ON/OFF toggle per configured radio channel for command-listening,
+// matching the PROMPT/TELEMETRY toggle style.
 function renderAiCommandChannels(selected) {
   if (!aiSettingsCommandChannels) {
     return;
@@ -1953,16 +1954,22 @@ function renderAiCommandChannels(selected) {
     return;
   }
   channels.forEach((ch) => {
-    const label = document.createElement("label");
-    label.className = "ai-settings-channel-toggle";
-    const cb = document.createElement("input");
-    cb.type = "checkbox";
-    cb.value = String(ch.channelIndex);
-    cb.checked = selectedSet.has(ch.channelIndex);
+    const row = document.createElement("div");
+    row.className = "ai-reply-row ai-reply-row--settings ai-settings-channel-toggle";
     const span = document.createElement("span");
+    span.className = "ai-reply-label";
     span.textContent = `CH${ch.channelIndex} ${ch.name || ""}`.trim();
-    label.append(cb, span);
-    aiSettingsCommandChannels.appendChild(label);
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "ai-reply-btn";
+    btn.dataset.channelIndex = String(ch.channelIndex);
+    setAiSettingsToggle(btn, selectedSet.has(ch.channelIndex));
+    btn.addEventListener("click", () => {
+      const next = btn.getAttribute("aria-pressed") !== "true";
+      setAiSettingsToggle(btn, next);
+    });
+    row.append(span, btn);
+    aiSettingsCommandChannels.appendChild(row);
   });
 }
 
@@ -1970,9 +1977,9 @@ function getAiCommandChannelSelection() {
   if (!aiSettingsCommandChannels) {
     return [];
   }
-  return Array.from(aiSettingsCommandChannels.querySelectorAll('input[type="checkbox"]'))
-    .filter((cb) => cb.checked)
-    .map((cb) => Number(cb.value))
+  return Array.from(aiSettingsCommandChannels.querySelectorAll("button[data-channel-index]"))
+    .filter((btn) => btn.getAttribute("aria-pressed") === "true")
+    .map((btn) => Number(btn.dataset.channelIndex))
     .filter((n) => Number.isInteger(n));
 }
 

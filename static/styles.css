@@ -4729,9 +4729,7 @@ textarea,
 .ai-settings-channel-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-size: 10px;
-  cursor: pointer;
+  gap: 8px;
 }
 
 /* AI reply toggle row */
