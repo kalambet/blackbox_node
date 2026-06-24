@@ -72,6 +72,18 @@ body {
     }
 }
 
+/* ---- UX3: visible keyboard focus on every interactive element ---- */
+:focus-visible {
+    outline: 2px solid var(--success) !important;
+    outline-offset: 1px !important;
+}
+
+/* ---- UX6: scroll instead of clip on short viewports ---- */
+@media (max-height: 700px) {
+    body { overflow: auto; }
+    .layout { height: auto; min-height: 100vh; }
+}
+
 .layout {
     width: min(1280px, calc(100% - 20px));
     height: 100vh;
@@ -224,8 +236,8 @@ body {
 }
 
 .panel-icon-button {
-    width: 22px;
-    height: 22px;
+    width: 26px;
+    height: 26px;
     padding: 0;
     display: inline-grid;
     place-items: center;
@@ -357,7 +369,7 @@ body {
 
 .chat-peer-filter-btn {
     min-width: 0;
-    padding: 4px 6px;
+    padding: 6px 8px;
     font-family: var(--font-display);
     font-size: 10px;
     line-height: 1;
