@@ -24,6 +24,8 @@
     --success-active-bg: #1a2e1a;
     --success: #38b26c;
     --danger: #d34c4c;
+    --favorite: #f5c84c;
+    --warn: #e8b84e;
     /* aliases — referenced across the sheet but previously undefined */
     --surface: var(--bg-2);
     --fg: var(--ink);
@@ -448,7 +450,7 @@ body {
 }
 
 .chat-peer-item.is-favorite {
-    border-left: 2px solid #f5c84c;
+    border-left: 2px solid var(--favorite);
     padding-left: 6px;
 }
 
@@ -473,7 +475,7 @@ body {
     place-items: center;
     width: 14px;
     height: 14px;
-    color: #f5c84c;
+    color: var(--favorite);
     flex: 0 0 14px;
 }
 
@@ -1231,7 +1233,7 @@ body.is-resizing-panels {
 }
 
 .node-item.favorite {
-    border-left-color: #f5c84c;
+    border-left-color: var(--favorite);
 }
 
 .node-item.weather {
@@ -1394,7 +1396,7 @@ body.is-resizing-panels {
 
 .node-action-btn.node-action-favorite.is-favorite {
     background: transparent;
-    color: #f5c84c;
+    color: var(--favorite);
 }
 
 .node-action-btn.node-action-favorite.is-favorite svg {
@@ -2476,12 +2478,12 @@ body.is-resizing-panels {
 }
 
 .node-favorite-button.is-favorite {
-    color: #f5c84c;
+    color: var(--favorite);
     border-color: #8a6a18;
 }
 
 .node-favorite-button.is-favorite svg {
-    color: #f5c84c;
+    color: var(--favorite);
     fill: currentColor;
 }
 
@@ -3591,7 +3593,7 @@ textarea,
 }
 
 .wallet-mnemonic-warning {
-    color: #e8b84e !important;
+    color: var(--warn) !important;
 }
 
 .wallet-mnemonic-grid {
@@ -4413,7 +4415,7 @@ textarea,
     font-weight: 700;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: #e8b84e;
+    color: var(--warn);
     white-space: nowrap;
 }
 
@@ -4428,7 +4430,7 @@ textarea,
     font-weight: 700;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: #e8b84e;
+    color: var(--warn);
 }
 
 .wallet-faucet-card {
@@ -4444,7 +4446,7 @@ textarea,
 
 .wallet-faucet-btn {
     background: #3a2800;
-    color: #e8b84e;
+    color: var(--warn);
     border-top: 1px solid #6b4c15;
     border-left: 1px solid #6b4c15;
     border-right: 1px solid #2a1c00;
@@ -4486,7 +4488,7 @@ textarea,
 }
 
 .wallet-pending-status {
-    color: #e8b84e;
+    color: var(--warn);
     text-transform: uppercase;
     font-size: 8px;
 }
