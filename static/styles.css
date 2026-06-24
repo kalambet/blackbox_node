@@ -258,20 +258,20 @@ body {
   text-transform: uppercase;
   background: var(--bg-2);
   color: var(--muted);
-  border-top: 2px solid var(--edge-dark);
-  border-left: 2px solid var(--edge-dark);
-  border-right: 2px solid var(--edge-light);
-  border-bottom: 2px solid var(--edge-light);
+  border-top: 2px solid var(--edge-light);
+  border-left: 2px solid var(--edge-light);
+  border-right: 2px solid var(--edge-dark);
+  border-bottom: 2px solid var(--edge-dark);
   cursor: pointer;
 }
 
 .chat-mode-btn.is-active {
   background: var(--panel);
   color: #ffffff;
-  border-top: 2px solid var(--edge-light);
-  border-left: 2px solid var(--edge-light);
-  border-right: 2px solid var(--edge-dark);
-  border-bottom: 2px solid var(--edge-dark);
+  border-top: 2px solid var(--edge-dark);
+  border-left: 2px solid var(--edge-dark);
+  border-right: 2px solid var(--edge-light);
+  border-bottom: 2px solid var(--edge-light);
 }
 
 @keyframes dm-unread-glow {
@@ -324,10 +324,10 @@ body {
   text-transform: uppercase;
   background: var(--bg-2);
   color: var(--muted);
-  border-top: 2px solid var(--edge-dark);
-  border-left: 2px solid var(--edge-dark);
-  border-right: 2px solid var(--edge-light);
-  border-bottom: 2px solid var(--edge-light);
+  border-top: 2px solid var(--edge-light);
+  border-left: 2px solid var(--edge-light);
+  border-right: 2px solid var(--edge-dark);
+  border-bottom: 2px solid var(--edge-dark);
   cursor: pointer;
 }
 
@@ -338,10 +338,10 @@ body {
 .chat-peer-filter-btn.is-active {
   background: var(--panel);
   color: #ffffff;
-  border-top: 2px solid var(--edge-light);
-  border-left: 2px solid var(--edge-light);
-  border-right: 2px solid var(--edge-dark);
-  border-bottom: 2px solid var(--edge-dark);
+  border-top: 2px solid var(--edge-dark);
+  border-left: 2px solid var(--edge-dark);
+  border-right: 2px solid var(--edge-light);
+  border-bottom: 2px solid var(--edge-light);
 }
 
 .chat-peer-dropdown {
@@ -5047,10 +5047,10 @@ textarea,
   font-size: 8px;
   color: var(--muted);
   background: var(--bg-2);
-  border-top: 2px solid var(--edge-dark);
-  border-left: 2px solid var(--edge-dark);
-  border-right: 2px solid var(--edge-light);
-  border-bottom: 2px solid var(--edge-light);
+  border-top: 2px solid var(--edge-light);
+  border-left: 2px solid var(--edge-light);
+  border-right: 2px solid var(--edge-dark);
+  border-bottom: 2px solid var(--edge-dark);
   padding: 7px 14px;
   cursor: pointer;
   text-transform: uppercase;
@@ -5059,10 +5059,10 @@ textarea,
 .setup-toggle button.is-active {
   color: #ffffff;
   background: var(--panel);
-  border-top: 2px solid var(--edge-light);
-  border-left: 2px solid var(--edge-light);
-  border-right: 2px solid var(--edge-dark);
-  border-bottom: 2px solid var(--edge-dark);
+  border-top: 2px solid var(--edge-dark);
+  border-left: 2px solid var(--edge-dark);
+  border-right: 2px solid var(--edge-light);
+  border-bottom: 2px solid var(--edge-light);
 }
 
 /* --- TX power stepped slider --- */
