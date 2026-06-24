@@ -6036,6 +6036,21 @@ const server = http.createServer(async (req, res) => {
       }
       const isDirectMessage = targetId !== "^all";
       await sendMeshReply(targetId, text, "local-ui", { channelIndex, isDirectMessage });
+      // If the operator broadcasts a known /command to a command-listening
+      // channel, the node answers it on the channel too (it never receives its
+      // own broadcast back). Fire-and-forget so the HTTP response returns now.
+      if (!isDirectMessage) {
+        const slash = parseLocalSlashCommand(text);
+        if (slash && getCommandChannels().includes(channelIndex)) {
+          generateMeshReply("local-ui", text, { replyTo: { isDirectMessage: false, channelIndex } })
+            .then((reply) => {
+              if (reply) {
+                return sendMeshReply("^all", reply, "local-ai", { channelIndex, isDirectMessage: false });
+              }
+            })
+            .catch(() => {});
+        }
+      }
       return sendJson(res, 200, { ok: true, destinationId: targetId, channelIndex, isDirectMessage });
     }
 
