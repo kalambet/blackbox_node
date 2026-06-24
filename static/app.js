@@ -1029,6 +1029,41 @@ function createCustomChatChannel(nameInput, indexInput) {
   }
 }
 
+// Mirror the radio's configured channel slots into the CHANS selector so a
+// channel added in SETUP shows up here. The radio is the source of truth when
+// connected; if it reports no configured channels we leave the current list.
+function applyRadioChannelsToChat(radioChannels) {
+  if (!Array.isArray(radioChannels)) {
+    return;
+  }
+  const seen = new Set();
+  const mapped = radioChannels
+    .filter(channelIsConfigured)
+    .map((ch) => {
+      const channelIndex = normalizeChannelIndex(ch.index, -1);
+      if (channelIndex < 0 || seen.has(channelIndex)) {
+        return null;
+      }
+      seen.add(channelIndex);
+      const name = String(ch.name || "").trim().slice(0, 32) || `Channel ${channelIndex}`;
+      return { id: `ch-${channelIndex}`, name, channelIndex };
+    })
+    .filter(Boolean);
+  if (!mapped.length) {
+    return;
+  }
+  const previous = getSelectedChatChannel();
+  chatState.channels = mapped;
+  persistChatChannels(chatState.channels);
+  const keep = previous && mapped.find((c) => c.channelIndex === previous.channelIndex);
+  setChatChannelSelection(keep ? keep.id : (mapped[0]?.id || ""), { persist: true });
+  populateChatChannelSelect();
+  renderChatChannelList();
+  if (chatState.mode === CHAT_MODE_CHANS) {
+    renderChannelChat();
+  }
+}
+
 function openChatChannelModal() {
   if (!chatChannelModal) {
     return;
@@ -1622,6 +1657,10 @@ function setChatMode(mode, { focusInput = false } = {}) {
   if (isChans) {
     ensureSelectedChatChannel();
     renderChatChannelList();
+    // Pull the radio's current channel slots so the list reflects the device.
+    if (latestMeshtasticConnected) {
+      meshCommand("get_channels").catch(() => {});
+    }
   }
 
   if (isDm) {
@@ -4483,8 +4522,13 @@ function renderDeviceStatus(status) {
 
   deviceStatus.style.cursor = "pointer";
   deviceStatus.title = "Open SETUP";
+  const wasConnected = latestMeshtasticConnected;
   latestMeshtasticConnected = connected;
   latestMeshStatus = mesh;
+  // On a fresh connection, pull channel slots so the CHANS list is ready.
+  if (connected && !wasConnected && typeof meshCommand === "function") {
+    meshCommand("get_channels").catch(() => {});
+  }
   if (typeof setupOnStatus === "function") setupOnStatus(mesh);
   if (typeof status.meshAiReply === "boolean") {
     applyMeshAiReply(status.meshAiReply);
@@ -7672,6 +7716,7 @@ function setupHandleSseEvent(name, payload) {
   switch (name) {
     case "channels":
       setupState.channels = Array.isArray(payload?.channels) ? payload.channels : [];
+      applyRadioChannelsToChat(setupState.channels);
       if (setupState.open && setupState.group === "channels") setupRenderChannels();
       break;
     case "default_flood_scope": {
