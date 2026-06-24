@@ -8,6 +8,8 @@ Blackbox Node is an offline-first command post for [MeshCore](https://meshcore.c
 
 It is designed for **off-grid communications**, **disaster response**, **field operations**, **community mesh networks**, and anyone who wants local AI and situational awareness without cloud infrastructure, without a cell tower, and without a remote server.
 
+> **This is a MeshCore-native fork** of the original [wadadawadada/blackbox_node](https://github.com/wadadawadada/blackbox_node) (which targets Meshtastic). It was rebuilt around MeshCore, drops TAK support, and adds agent commands and remote/split inference. See [How this fork differs from upstream](#how-this-fork-differs-from-upstream).
+
 ---
 
 ## Demo
@@ -24,6 +26,36 @@ It is designed for **off-grid communications**, **disaster response**, **field o
 - Get **end-to-end encrypted DMs with delivery confirmation** over radio
 - Move value off-grid with **Bitcoin** and **Cashu ecash**
 - Store everything locally in `./data/` with no accounts and no hosted backend
+
+---
+
+## How this fork differs from upstream
+
+The original [blackbox_node](https://github.com/wadadawadada/blackbox_node) targets **Meshtastic**. This fork is a ground-up **MeshCore-native** rebuild — no Meshtastic, no compatibility/abstraction layer — plus several capabilities the upstream doesn't have. If you're coming from upstream, these are the deviations:
+
+### Radio stack — MeshCore, not Meshtastic
+- Python bridge rewritten on the async [`meshcore`](https://pypi.org/project/meshcore/) library; all Meshtastic/protobuf code removed.
+- Native MeshCore concepts throughout: contacts identified by **public keys**, **adverts** for discovery, learned **paths** with per-hop SNR tracing, **room servers** (store-and-forward threads), and **E2E DMs with delivery confirmation** (RTT ticks).
+- All local state (favorites, chat history, wallet clients) is keyed by **pubkey prefix** — a fresh start, with no migration of old Meshtastic node IDs.
+- Transports: **serial + TCP** (BLE deferred).
+
+### TAK / ATAK / CoT removed
+- The entire TAK stack (the `tak_fountain.py` fountain-code path, TAK events, settings, and UI) was deleted — unused in MeshCore deployments.
+
+### Retro SETUP console + native mesh UI
+- A full-screen, game-title-style **SETUP** console (connection, identity, radio presets, channels, contacts, device stats, advanced, inference) replaces the old device modal, in a pixel-font retro aesthetic.
+- Channel and contact sharing via `meshcore://` URIs with dependency-free **pixel QR** codes.
+- **Remote admin console**: log into repeater/room nodes and issue CLI commands over the mesh.
+
+### Agent commands (`/wiki`)
+- A pluggable **KnowledgeSource** + **AgentCommand** registry, with Wikipedia as the first source.
+- Adaptive engine: a native tool-calling loop on capable models, falling back to a query→search→fetch→synthesize pipeline on small ones. Answers are grounded in the fetched sources and length-aware for mesh delivery.
+
+### Remote / split inference (Tailscale)
+- Inference mode is configurable: the bundled local `llama-server`, or a **remote OpenAI-compatible endpoint** over [Tailscale](https://tailscale.com/) — so a thin Raspberry Pi field node can run the radio + dashboard and offload the LLM to a home machine. Live toggle in **SETUP → INFERENCE**, env-var overrides, and a graceful shutdown that reaps child processes for clean `pm2`/`systemd` restarts. See [Remote inference](#remote-inference-split-deployment).
+
+### Mesh command routing
+- A direct message that begins with a **known command** (`/wiki`, `/weather`, …) is always routed to command processing; free-form DMs get an AI reply only when mesh AI reply is enabled, otherwise they are delivered as plain direct messages.
 
 ---
 
@@ -60,13 +92,18 @@ When AI over mesh is enabled, any node can send a **slash command** as a direct 
 | Command | What it returns |
 |---|---|
 | `/help` | List of all available commands |
+| `/wiki <question>` | Answer from Wikipedia via the local LLM (agent command — grounded, source-cited) |
 | `/summary` | Node counts, network health, activity breakdown, temperature |
 | `/weather` | Latest environment readings from telemetry sensors |
 | `/activity` | Recent event counts (telemetry, messages, DMs) for the current window |
 | `/battery` | Battery levels — average, low nodes, critical nodes |
 | `/nodecheck <name>` | Status of a specific node: online state, last seen, SNR, hops, battery |
+| `/trace <name>` | Route to a contact with per-hop SNR |
+| `/advert [flood]` | Broadcast an advert (zero-hop, or flood) |
 | `/wallet` | Your wallet balance and available off-grid Cashu proofs |
 | `send <amount> <node>` | Send Cashu sats to a node by its short name (requires wallet client auth) |
+
+Known commands are always processed when sent as a direct message, even with AI auto-reply off; a non-command DM is treated as a plain message (or answered by the AI when auto-reply is enabled).
 
 ### Communication and telemetry
 
@@ -232,7 +269,7 @@ python --version
 ### 2. Clone and install Node dependencies
 
 ```bat
-git clone https://github.com/wadadawadada/blackbox_node.git
+git clone https://github.com/kalambet/blackbox_node.git
 cd blackbox_node
 npm install
 ```
@@ -322,12 +359,13 @@ On launch:
 
 **AI**
 
-- Local LLM via `llama.cpp`, fully offline after model download
+- Local LLM via `llama.cpp`, fully offline after model download — or **remote/split inference** over Tailscale (see [Remote inference](#remote-inference-split-deployment))
 - Mesh-triggered queries with `@bot ...` and `!ask ...`
 - `!reset` clears per-peer conversation context
-- Slash commands over mesh DM: `/help`, `/summary`, `/weather`, `/activity`, `/battery`, `/nodecheck`
+- Slash commands over mesh DM: `/help`, `/summary`, `/weather`, `/activity`, `/battery`, `/nodecheck`, `/trace`, `/advert`
+- **Agent commands** (`/wiki`): pluggable knowledge sources with an adaptive tool-call / pipeline engine, grounded and source-cited
 - Configurable system prompt, temperature, top-p, and token limits per mode
-- Built-in model manager for curated GGUF downloads
+- Built-in model manager for curated GGUF downloads (disabled in remote-inference mode — the host owns the model)
 
 **MeshCore / Radio**
 
@@ -384,7 +422,9 @@ On launch:
 
 ---
 
-## Donate
+## Credits & Donate
+
+This fork stands on the shoulders of the original **[blackbox_node](https://github.com/wadadawadada/blackbox_node)** by [@wadadawadada](https://github.com/wadadawadada) — huge thanks for building the foundation this MeshCore-native version is built on. All donations below go to the original author; please support their work.
 
 If this project is useful to you, consider supporting development:
 
