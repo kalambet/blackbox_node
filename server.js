@@ -5769,6 +5769,7 @@ const server = http.createServer(async (req, res) => {
         "request_self_telemetry", "trace_path", "path_discovery", "reset_path",
         "remove_contact", "share_contact", "export_contact", "import_contact",
         "add_pending_contact", "get_channels", "set_channel", "get_device_info",
+        "get_default_flood_scope", "set_default_flood_scope",
         "set_repeater_mode", "set_time", "reboot", "factory_reset", "export_private_key",
         "import_private_key", "admin_login", "admin_logout", "admin_cmd",
         "request_status",
