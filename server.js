@@ -3,6 +3,7 @@ const fs = require("fs");
 const path = require("path");
 const { spawnSync, spawn } = require("child_process");
 const { webcrypto } = require("crypto");
+const { XMLParser } = require("fast-xml-parser");
 
 // cashu-ts expects Web Crypto APIs on globalThis.
 // Older Node runtimes may not expose them there by default.
@@ -2727,10 +2728,40 @@ function getKnowledgeSettings() {
   const knowledge = appSettings.knowledge || {};
   return {
     wikipedia: {
-      enabled: knowledge.wikipedia?.enabled !== false,
+      enabled: knowledge.wikipedia?.enabled !== false, // default ON
       lang: String(knowledge.wikipedia?.lang || "en"),
     },
+    pretix: {
+      enabled: knowledge.pretix?.enabled === true, // default OFF until a URL is set
+      url: String(knowledge.pretix?.url || ""),
+    },
   };
+}
+
+// Persist the "Integrations" settings (knowledge sources). Validates the pretix
+// schedule URL and invalidates the cached schedule whenever the URL changes.
+function updateKnowledgeSettings(next) {
+  const source = next && typeof next === "object" ? next : {};
+  const wiki = source.wikipedia && typeof source.wikipedia === "object" ? source.wikipedia : {};
+  const pretix = source.pretix && typeof source.pretix === "object" ? source.pretix : {};
+  let url = String(pretix.url || "").trim().slice(0, 500);
+  if (url && !/^https?:\/\//i.test(url)) {
+    url = "";
+  }
+  const prevUrl = String(appSettings.knowledge?.pretix?.url || "");
+  appSettings.knowledge = {
+    ...(appSettings.knowledge || {}),
+    wikipedia: {
+      ...(appSettings.knowledge?.wikipedia || {}),
+      enabled: wiki.enabled !== false,
+    },
+    pretix: { enabled: pretix.enabled === true, url },
+  };
+  persistSettings();
+  if (url !== prevUrl) {
+    invalidateScheduleCache();
+  }
+  return getKnowledgeSettings();
 }
 
 function stripHtmlTags(text) {
@@ -2761,6 +2792,322 @@ async function fetchJsonWithTimeout(url, timeoutMs = AGENT_SOURCE_TIMEOUT_MS) {
   } finally {
     clearTimeout(timer);
   }
+}
+
+// ---- Conference schedule (frab/pentabarf schedule.xml) ----------------------
+const SCHEDULE_MAX_BYTES = 2_000_000; // guard against a huge schedule.xml
+const SCHEDULE_CACHE_TTL_MS = 10 * 60 * 1000;
+let scheduleCache = { url: "", fetchedAt: 0, events: [] };
+
+function invalidateScheduleCache() {
+  scheduleCache = { url: "", fetchedAt: 0, events: [] };
+}
+
+async function fetchTextWithTimeout(url, timeoutMs = AGENT_SOURCE_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: { "User-Agent": "blackbox-node/1.0 (mesh dashboard agent)" },
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const text = await response.text();
+    return text.length > SCHEDULE_MAX_BYTES ? text.slice(0, SCHEDULE_MAX_BYTES) : text;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function toArray(value) {
+  if (Array.isArray(value)) return value;
+  return value == null ? [] : [value];
+}
+
+function parseDurationMin(value) {
+  const match = String(value || "").match(/^(\d+):(\d+)/);
+  return match ? Number(match[1]) * 60 + Number(match[2]) : 0;
+}
+
+// Minutes of UTC offset baked into a frab <date> (e.g. "+02:00" -> 120).
+function parseTzOffsetMin(dateStr) {
+  const match = String(dateStr || "").match(/([+-])(\d{2}):?(\d{2})$/);
+  if (!match) return 0;
+  return (match[1] === "-" ? -1 : 1) * (Number(match[2]) * 60 + Number(match[3]));
+}
+
+// Calendar date (YYYY-MM-DD) of an epoch instant in the conference's local tz.
+function confLocalDate(ms, tzOffsetMin) {
+  return new Date(ms + tzOffsetMin * 60000).toISOString().slice(0, 10);
+}
+
+// Minute-of-day (0-1439) of an epoch instant in the conference's local tz.
+function confLocalMinute(ms, tzOffsetMin) {
+  const d = new Date(ms + tzOffsetMin * 60000);
+  return d.getUTCHours() * 60 + d.getUTCMinutes();
+}
+
+function hhmmToMin(value) {
+  const match = String(value || "").match(/(\d{1,2}):(\d{2})/);
+  return match ? Number(match[1]) * 60 + Number(match[2]) : null;
+}
+
+function parseFrabSchedule(xml) {
+  const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "@_" });
+  const doc = parser.parse(xml);
+  const schedule = doc?.schedule || {};
+  const events = [];
+  for (const day of toArray(schedule.day)) {
+    const dayDate = String(day?.["@_date"] || "").slice(0, 10);
+    for (const room of toArray(day?.room)) {
+      const roomName = String(room?.["@_name"] || "");
+      for (const ev of toArray(room?.event)) {
+        const dateStr = String(ev?.date || "");
+        const startMs = Date.parse(dateStr);
+        const hasStart = Number.isFinite(startMs);
+        const durationMin = parseDurationMin(ev?.duration);
+        const tzOffsetMin = parseTzOffsetMin(dateStr);
+        const persons = toArray(ev?.persons?.person)
+          .map((p) => (p && typeof p === "object" ? String(p["#text"] || "") : String(p || "")))
+          .map((s) => s.trim())
+          .filter(Boolean);
+        events.push({
+          id: String(ev?.["@_id"] || ""),
+          guid: String(ev?.["@_guid"] || ev?.["@_id"] || ""),
+          title: stripHtmlTags(ev?.title || ""),
+          subtitle: stripHtmlTags(ev?.subtitle || ""),
+          track: stripHtmlTags(ev?.track || ""),
+          room: roomName || stripHtmlTags(ev?.room || ""),
+          dayDate: dayDate || (hasStart ? confLocalDate(startMs, tzOffsetMin) : ""),
+          startMs: hasStart ? startMs : null,
+          endMs: hasStart ? startMs + durationMin * 60000 : null,
+          startLabel: String(ev?.start || (hasStart ? new Date(startMs + tzOffsetMin * 60000).toISOString().slice(11, 16) : "")),
+          tzOffsetMin,
+          persons,
+          abstract: stripHtmlTags(ev?.abstract || ev?.description || ""),
+        });
+      }
+    }
+  }
+  return events;
+}
+
+async function ensureSchedule() {
+  const { enabled, url } = getKnowledgeSettings().pretix;
+  if (!enabled || !url) return [];
+  const fresh =
+    scheduleCache.url === url &&
+    scheduleCache.events.length &&
+    Date.now() - scheduleCache.fetchedAt < SCHEDULE_CACHE_TTL_MS;
+  if (fresh) return scheduleCache.events;
+  try {
+    const xml = await fetchTextWithTimeout(url);
+    const events = parseFrabSchedule(xml);
+    if (events.length) {
+      scheduleCache = { url, fetchedAt: Date.now(), events };
+    }
+    return events;
+  } catch {
+    // Keep any previously-cached events on a transient failure; otherwise empty.
+    return scheduleCache.url === url ? scheduleCache.events : [];
+  }
+}
+
+// Resolve a day filter ("today"/"tomorrow"/"YYYY-MM-DD") to a calendar date.
+function resolveScheduleDay(dayArg, events, nowMs) {
+  const arg = String(dayArg || "").trim().toLowerCase();
+  if (!arg) return "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(arg)) return arg;
+  const tzOffsetMin = events[0]?.tzOffsetMin ?? 0;
+  if (arg === "today") return confLocalDate(nowMs, tzOffsetMin);
+  if (arg === "tomorrow") return confLocalDate(nowMs + 86400000, tzOffsetMin);
+  return "";
+}
+
+function textMatch(haystack, needle) {
+  return String(haystack || "").toLowerCase().includes(String(needle || "").toLowerCase());
+}
+
+// Apply structured + temporal filters; returns events sorted by start time.
+function filterSchedule(events, filters, nowMs) {
+  let list = events.slice();
+  if (filters.room) list = list.filter((e) => textMatch(e.room, filters.room));
+  if (filters.track) list = list.filter((e) => textMatch(e.track, filters.track));
+  if (filters.speaker) list = list.filter((e) => e.persons.some((p) => textMatch(p, filters.speaker)));
+  if (filters.text) {
+    const t = filters.text.toLowerCase();
+    list = list.filter((e) =>
+      [e.title, e.subtitle, e.track, e.abstract, e.persons.join(" ")].join(" ").toLowerCase().includes(t)
+    );
+  }
+  if (filters.day) {
+    const target = resolveScheduleDay(filters.day, events, nowMs);
+    if (target) list = list.filter((e) => e.dayDate === target);
+  }
+  const when = String(filters.when || "").trim().toLowerCase();
+  if (when === "now") {
+    list = list.filter((e) => e.startMs != null && e.startMs <= nowMs && nowMs < (e.endMs ?? e.startMs));
+  } else if (when === "next") {
+    list = list.filter((e) => e.startMs != null && e.startMs > nowMs);
+  } else if (/^\d{1,2}:\d{2}/.test(when)) {
+    const [startStr, endStr] = when.split("-");
+    const startM = hhmmToMin(startStr);
+    const endM = endStr ? hhmmToMin(endStr) : (startM != null ? startM + 1 : null);
+    if (startM != null && endM != null) {
+      list = list.filter((e) => {
+        if (e.startMs == null) return false;
+        const s = confLocalMinute(e.startMs, e.tzOffsetMin);
+        const en = e.endMs != null ? confLocalMinute(e.endMs, e.tzOffsetMin) : s + 1;
+        return s < endM && en > startM; // window overlap
+      });
+    }
+  }
+  return list.sort((a, b) => (a.startMs ?? Infinity) - (b.startMs ?? Infinity));
+}
+
+function scheduleSnippet(e) {
+  const parts = [];
+  if (e.dayDate || e.startLabel) parts.push(`${e.dayDate} ${e.startLabel}`.trim());
+  if (e.room) parts.push(e.room);
+  if (e.persons.length) parts.push(e.persons.join(", "));
+  return parts.join(" · ");
+}
+
+function scheduleResult(e) {
+  return { ref: e.guid || e.id, title: e.title, snippet: scheduleSnippet(e), room: e.room, day: e.dayDate, start: e.startLabel, speakers: e.persons.join(", ") };
+}
+
+function scheduleDetail(e) {
+  const endLabel = e.endMs != null ? new Date(e.endMs + e.tzOffsetMin * 60000).toISOString().slice(11, 16) : "";
+  const lines = [e.title];
+  if (e.subtitle) lines.push(e.subtitle);
+  lines.push(`${e.dayDate} ${e.startLabel}${endLabel ? `-${endLabel}` : ""} · ${e.room || "?"}`);
+  if (e.persons.length) lines.push(`Speakers: ${e.persons.join(", ")}`);
+  if (e.track) lines.push(`Track: ${e.track}`);
+  if (e.abstract) lines.push("", e.abstract);
+  return lines.join("\n");
+}
+
+function findScheduleEvent(events, ref) {
+  const key = String(ref || "");
+  return (
+    events.find((e) => e.guid === key || e.id === key) ||
+    events.find((e) => textMatch(e.title, key)) ||
+    null
+  );
+}
+
+// Tool defs the model sees for the pretix source (schedule-native, time-aware).
+function pretixBuildTools() {
+  return [
+    {
+      type: "function",
+      function: {
+        name: "find_sessions",
+        description: "Search the conference schedule. All filters are optional and combined with AND. Call this for every schedule question.",
+        parameters: {
+          type: "object",
+          properties: {
+            text: { type: "string", description: "keywords to match in title/subtitle/track/abstract/speakers" },
+            speaker: { type: "string", description: "speaker name" },
+            room: { type: "string", description: "room name" },
+            track: { type: "string", description: "track name" },
+            day: { type: "string", description: "'today', 'tomorrow', or an exact date YYYY-MM-DD" },
+            when: { type: "string", description: "'now' = sessions on at the current time; 'next' = upcoming; or a time window 'HH:MM' or 'HH:MM-HH:MM'" },
+            limit: { type: "integer", description: "max results, default 8" },
+          },
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: "session_details",
+        description: "Get full details (abstract, speakers, exact time, room) for one session, using a ref from find_sessions.",
+        parameters: {
+          type: "object",
+          properties: { ref: { type: "string", description: "the ref field of a find_sessions result" } },
+          required: ["ref"],
+        },
+      },
+    },
+  ];
+}
+
+async function pretixRunTool(name, args, collected, ctx) {
+  const nowMs = ctx?.now ? ctx.now.getTime() : Date.now();
+  if (name === "find_sessions") {
+    const events = await ensureSchedule();
+    const filters = {
+      text: String(args.text || "").trim(),
+      speaker: String(args.speaker || "").trim(),
+      room: String(args.room || "").trim(),
+      track: String(args.track || "").trim(),
+      day: String(args.day || "").trim(),
+      when: String(args.when || "").trim(),
+    };
+    const limit = clampInteger(args.limit, 1, 20, 8);
+    let list = filterSchedule(events, filters, nowMs);
+    let note = "";
+    const when = filters.when.toLowerCase();
+    if (!list.length && (when === "now" || when === "next")) {
+      // Conference not running / no match for the time window: fall back to the
+      // nearest upcoming sessions so the model can say "nothing now, next is...".
+      list = filterSchedule(events, { ...filters, when: "" }, nowMs).filter((e) => e.startMs != null && e.startMs > nowMs);
+      note = "Nothing matches that time; showing the nearest upcoming sessions instead.";
+    }
+    const sessions = list.slice(0, limit).map(scheduleResult);
+    collected.results.push(...sessions);
+    return JSON.stringify({ now: new Date(nowMs).toISOString(), count: sessions.length, note, sessions });
+  }
+  if (name === "session_details") {
+    const events = await ensureSchedule();
+    const ev = findScheduleEvent(events, args.ref);
+    if (!ev) return JSON.stringify({ error: "session not found" });
+    collected.fetched.push(ev.title);
+    return JSON.stringify({ title: ev.title, text: scheduleDetail(ev).slice(0, AGENT_EXTRACT_PER_ARTICLE) });
+  }
+  return null; // not a pretix tool
+}
+
+// Non-tool fallback for models that don't emit tool calls: extract temporal
+// intent heuristically, filter, and synthesize from the relevant sessions.
+async function pretixPipeline(command, question, surface, ctx, collected) {
+  const events = await ensureSchedule();
+  if (!events.length) throw new Error("no schedule");
+  const nowMs = ctx?.now ? ctx.now.getTime() : Date.now();
+  const q = question.toLowerCase();
+  const filters = {};
+  if (/\b(now|happening|currently|right now|on at the moment)\b/.test(q)) filters.when = "now";
+  else if (/\bnext\b/.test(q)) filters.when = "next";
+  if (/\btomorrow\b/.test(q)) filters.day = "tomorrow";
+  else if (/\b(today|tonight)\b/.test(q)) filters.day = "today";
+  const timeMatch = q.match(/\b(\d{1,2}:\d{2})\b/);
+  if (timeMatch && !filters.when) filters.when = timeMatch[1];
+  for (const e of events) {
+    if (e.room && q.includes(e.room.toLowerCase())) { filters.room = e.room; break; }
+  }
+  filters.text = question.replace(/[^\p{L}\p{N} ]/gu, " ").replace(/\s+/g, " ").trim();
+
+  let list = filterSchedule(events, filters, nowMs);
+  if (!list.length && (filters.when === "now" || filters.when === "next")) {
+    list = filterSchedule(events, { ...filters, when: "" }, nowMs).filter((e) => e.startMs != null && e.startMs > nowMs);
+  }
+  if (!list.length) list = filterSchedule(events, { text: filters.text }, nowMs);
+  const top = list.slice(0, 8);
+  collected.results.push(...top.map(scheduleResult));
+  if (!top.length) throw new Error("no matching sessions");
+
+  const context = top.map(scheduleDetail).join("\n\n").slice(0, AGENT_EXTRACT_CHAR_BUDGET);
+  const answer = await agentLlmChat([
+    { role: "system", content: `${command.synthesisPrompt(surface)} Current time is ${new Date(nowMs).toISOString()}.` },
+    { role: "user", content: `Question: ${question}\n\nRelevant sessions:\n${context}` },
+  ], { maxTokens: surface === "mesh" ? AGENT_MESH_MAX_TOKENS : AGENT_LOCAL_MAX_TOKENS });
+  const text = String(answer.content || "").trim();
+  if (!text) throw new Error("no answer");
+  return text;
 }
 
 const knowledgeSources = {
@@ -2809,6 +3156,35 @@ const knowledgeSources = {
       };
     },
   },
+  pretix: {
+    id: "pretix",
+    kind: "online",
+    label: "Pretix",
+    available() {
+      const s = getKnowledgeSettings().pretix;
+      return Boolean(s.enabled && s.url);
+    },
+    // Schedule-native, time-aware tools (see pretixBuildTools/pretixRunTool).
+    buildTools(ctx) {
+      return pretixBuildTools(ctx);
+    },
+    async runTool(name, args, collected, ctx) {
+      return pretixRunTool(name, args, collected, ctx);
+    },
+    async pipeline(command, question, surface, ctx, collected) {
+      return pretixPipeline(command, question, surface, ctx, collected);
+    },
+    // Base search/fetch so the source still satisfies the generic interface.
+    async search(query, limit = 8) {
+      const events = await ensureSchedule();
+      return filterSchedule(events, { text: String(query || "") }, Date.now()).slice(0, limit).map(scheduleResult);
+    },
+    async fetch(ref) {
+      const events = await ensureSchedule();
+      const ev = findScheduleEvent(events, ref);
+      return ev ? { title: ev.title, text: scheduleDetail(ev) } : { title: String(ref), text: "" };
+    },
+  },
 };
 
 const agentCommands = [
@@ -2832,6 +3208,28 @@ const agentCommands = [
         return "No Wikipedia results found.";
       }
       return trimResponse(`${top.title}: ${top.snippet || "no summary available"} (Wikipedia)`);
+    },
+  },
+  {
+    name: "pretix",
+    helpText: "/pretix <question> - answer about the event schedule",
+    sources: ["pretix"],
+    synthesisPrompt(surface) {
+      return [
+        "You answer questions about the conference schedule using ONLY data returned by the find_sessions / session_details tools - never invent sessions, times, rooms or speakers.",
+        "Always call find_sessions first, mapping the question to filters: 'now'/'happening now' -> when='now'; 'next'/'upcoming' -> when='next'; 'today'/'tomorrow' -> day; a stated time -> when='HH:MM'; a room -> room; a speaker -> speaker; a topic -> text. Combine filters as needed.",
+        "Answer with the session title, time, room and speaker(s). If nothing matches, say so plainly.",
+        surface === "mesh"
+          ? "Reply in at most 2 short sentences (under 300 characters total) - the reply travels over a low-bandwidth radio."
+          : "Reply concisely.",
+      ].join(" ");
+    },
+    fallback(results) {
+      const top = (results || [])[0];
+      if (!top) {
+        return "No matching sessions found.";
+      }
+      return trimResponse(`${top.title} — ${top.snippet}`);
     },
   },
 ];
@@ -2897,11 +3295,16 @@ async function agentLlmChat(messages, { maxTokens, tools = undefined, jsonSchema
   return data.choices?.[0]?.message || {};
 }
 
-function buildAgentTools(command) {
+function buildAgentTools(command, ctx) {
   const tools = [];
   for (const sourceId of command.sources) {
     const source = knowledgeSources[sourceId];
     if (!source || !source.available()) continue;
+    // A source may declare its own tools (e.g. schedule-native, time-aware).
+    if (typeof source.buildTools === "function") {
+      tools.push(...source.buildTools(ctx));
+      continue;
+    }
     tools.push({
       type: "function",
       function: {
@@ -2930,10 +3333,14 @@ function buildAgentTools(command) {
   return tools;
 }
 
-async function executeAgentTool(command, name, args, collected) {
+async function executeAgentTool(command, name, args, collected, ctx) {
   for (const sourceId of command.sources) {
     const source = knowledgeSources[sourceId];
     if (!source) continue;
+    if (typeof source.runTool === "function") {
+      const out = await source.runTool(name, args, collected, ctx);
+      if (out != null) return out; // null => not this source's tool, keep looking
+    }
     if (name === `search_${source.id}`) {
       const results = await source.search(String(args.query || ""), 4);
       collected.results.push(...results);
@@ -2956,13 +3363,13 @@ async function executeAgentTool(command, name, args, collected) {
 // emits a tool call, the result is cached and we use the pipeline from then on.
 const agentToolModeCache = new Map();
 
-async function runAgentToolLoop(command, question, surface, deadline, collected) {
-  const tools = buildAgentTools(command);
+async function runAgentToolLoop(command, question, surface, deadline, collected, ctx) {
+  const tools = buildAgentTools(command, ctx);
   if (!tools.length) {
     throw new Error("no knowledge sources available");
   }
   const messages = [
-    { role: "system", content: `${command.synthesisPrompt(surface)} Use the provided tools to find the answer before responding.` },
+    { role: "system", content: `${command.synthesisPrompt(surface)} Current time is ${ctx.now.toISOString()}. Use the provided tools to find the answer before responding.` },
     { role: "user", content: question },
   ];
   let sawToolCall = false;
@@ -2992,7 +3399,7 @@ async function runAgentToolLoop(command, question, surface, deadline, collected)
       try { args = JSON.parse(call.function?.arguments || "{}"); } catch {}
       let result;
       try {
-        result = await executeAgentTool(command, call.function?.name, args, collected);
+        result = await executeAgentTool(command, call.function?.name, args, collected, ctx);
       } catch (error) {
         result = JSON.stringify({ error: error.message });
       }
@@ -3002,10 +3409,17 @@ async function runAgentToolLoop(command, question, surface, deadline, collected)
   throw new Error("agent budget exhausted");
 }
 
-async function runAgentPipeline(command, question, surface, deadline, collected) {
+async function runAgentPipeline(command, question, surface, deadline, collected, ctx) {
   const sources = command.sources.map((id) => knowledgeSources[id]).filter((s) => s && s.available());
   if (!sources.length) {
     throw new Error("no knowledge sources available");
+  }
+  // A source may own its non-tool path (e.g. schedule needs temporal filtering).
+  for (const source of sources) {
+    if (typeof source.pipeline === "function") {
+      const answer = await source.pipeline(command, question, surface, ctx, collected);
+      if (answer) return answer;
+    }
   }
   let query = question;
   try {
@@ -3085,20 +3499,22 @@ async function runAgentCommand(command, slashCommand, { surface = "local", peerI
   // Mesh callers wait on radio airtime; local callers can afford slower models.
   const deadline = Date.now() + (surface === "mesh" ? AGENT_TOTAL_BUDGET_MS : AGENT_TOTAL_BUDGET_MS * 2);
   const collected = { results: [], fetched: [], fetchedChars: 0, query: question, mode: "tool" };
+  // Shared context for time-aware sources (e.g. "what's on now?").
+  const ctx = { now: new Date(), surface };
   let answer = "";
   let failure = "";
   try {
     const cached = agentToolModeCache.get(currentModelName);
     if (cached !== false) {
       try {
-        answer = await runAgentToolLoop(command, question, surface, deadline, collected);
+        answer = await runAgentToolLoop(command, question, surface, deadline, collected, ctx);
       } catch (toolError) {
         collected.mode = `pipeline (tool mode: ${toolError.message})`;
-        answer = await runAgentPipeline(command, question, surface, deadline, collected);
+        answer = await runAgentPipeline(command, question, surface, deadline, collected, ctx);
       }
     } else {
       collected.mode = "pipeline (cached)";
-      answer = await runAgentPipeline(command, question, surface, deadline, collected);
+      answer = await runAgentPipeline(command, question, surface, deadline, collected, ctx);
     }
   } catch (error) {
     failure = error.message;
@@ -5999,13 +6415,14 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === "GET" && req.url === "/api/ai-settings") {
-      return sendJson(res, 200, { currentModel: getActiveModelName(), settings: getAiSettingsPayload(), inference: getInferenceConfigPayload() });
+      return sendJson(res, 200, { currentModel: getActiveModelName(), settings: getAiSettingsPayload(), inference: getInferenceConfigPayload(), integrations: getKnowledgeSettings() });
     }
 
     if (req.method === "POST" && req.url === "/api/ai-settings") {
       const body = await readJson(req);
       const settings = updateAiSettings(body.settings || body);
-      return sendJson(res, 200, { ok: true, currentModel: getActiveModelName(), settings });
+      const integrations = body.integrations ? updateKnowledgeSettings(body.integrations) : getKnowledgeSettings();
+      return sendJson(res, 200, { ok: true, currentModel: getActiveModelName(), settings, integrations });
     }
 
     if (req.method === "GET" && req.url === "/api/inference-mode") {

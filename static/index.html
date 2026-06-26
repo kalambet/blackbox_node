@@ -425,6 +425,19 @@
             <div class="device-status-text">Channels the node answers <code>/commands</code> on. Direct messages always work.</div>
             <div id="aiSettingsCommandChannels" class="ai-settings-command-channels"></div>
           </div>
+          <div class="modal-section modal-section-wide">
+            <div class="modal-label">Integrations</div>
+            <div class="device-status-text">Knowledge sources the node can answer <code>/commands</code> from.</div>
+            <div class="ai-reply-row ai-reply-row--settings">
+              <span class="ai-reply-label">Wiki</span>
+              <button id="integrationWikiToggle" type="button" class="ai-reply-btn" aria-pressed="false">off</button>
+            </div>
+            <div class="ai-reply-row ai-reply-row--settings">
+              <span class="ai-reply-label">Pretix</span>
+              <button id="integrationPretixToggle" type="button" class="ai-reply-btn" aria-pressed="false">off</button>
+            </div>
+            <label class="ai-settings-field" for="integrationPretixUrl"><span>Pretix schedule.xml URL</span><input id="integrationPretixUrl" type="url" placeholder="https://…/schedule.xml"></label>
+          </div>
         </div>
         <div class="ai-settings-actions">
           <button id="aiSettingsSaveButton" type="submit">Save</button>

@@ -82,6 +82,9 @@ const aiSettingsMeshTopP = document.getElementById("aiSettingsMeshTopP");
 const aiSettingsMeshMaxTokens = document.getElementById("aiSettingsMeshMaxTokens");
 const aiSettingsCommandChannels = document.getElementById("aiSettingsCommandChannels");
 let aiCommandChannelsLoaded = [];
+const integrationWikiToggle = document.getElementById("integrationWikiToggle");
+const integrationPretixToggle = document.getElementById("integrationPretixToggle");
+const integrationPretixUrl = document.getElementById("integrationPretixUrl");
 const helpModal = document.getElementById("helpModal");
 const helpModalClose = document.getElementById("helpModalClose");
 const helpDonateButton = document.getElementById("helpDonateButton");
@@ -1999,6 +2002,10 @@ function renderAiSettings(payload) {
   aiSettingsMeshMaxTokens.value = settings.meshMaxTokens ?? 120;
   aiCommandChannelsLoaded = Array.isArray(settings.commandChannels) ? settings.commandChannels : [];
   renderAiCommandChannels(aiCommandChannelsLoaded);
+  const integrations = payload?.integrations || {};
+  if (integrationWikiToggle) setAiSettingsToggle(integrationWikiToggle, integrations.wikipedia?.enabled !== false);
+  if (integrationPretixToggle) setAiSettingsToggle(integrationPretixToggle, integrations.pretix?.enabled === true);
+  if (integrationPretixUrl) integrationPretixUrl.value = integrations.pretix?.url || "";
   toggleAiInstructionsInput();
 }
 
@@ -2044,6 +2051,16 @@ function collectAiSettingsForm() {
     meshTopP: Number(aiSettingsMeshTopP.value),
     meshMaxTokens: Number(aiSettingsMeshMaxTokens.value),
     commandChannels: getAiCommandChannelSelection(),
+  };
+}
+
+function collectIntegrationsForm() {
+  return {
+    wikipedia: { enabled: integrationWikiToggle?.getAttribute("aria-pressed") === "true" },
+    pretix: {
+      enabled: integrationPretixToggle?.getAttribute("aria-pressed") === "true",
+      url: (integrationPretixUrl?.value || "").trim(),
+    },
   };
 }
 
@@ -5940,13 +5957,19 @@ aiSettingsUseTelemetry.addEventListener("click", () => {
   const next = aiSettingsUseTelemetry.getAttribute("aria-pressed") !== "true";
   setAiSettingsToggle(aiSettingsUseTelemetry, next);
 });
+[integrationWikiToggle, integrationPretixToggle].forEach((toggle) => {
+  if (!toggle) return;
+  toggle.addEventListener("click", () => {
+    setAiSettingsToggle(toggle, toggle.getAttribute("aria-pressed") !== "true");
+  });
+});
 aiSettingsForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   aiSettingsStatusText.textContent = "Saving AI settings...";
   try {
     const payload = await fetchJson("/api/ai-settings", {
       method: "POST",
-      body: JSON.stringify({ settings: collectAiSettingsForm() }),
+      body: JSON.stringify({ settings: collectAiSettingsForm(), integrations: collectIntegrationsForm() }),
     });
     renderAiSettings(payload);
     aiSettingsStatusText.textContent = "AI settings saved.";
