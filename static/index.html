@@ -389,54 +389,66 @@
             <button id="meshAiReplyToggle" type="button" class="ai-reply-btn" aria-pressed="false">off</button>
           </div>
         </div>
-        <div class="ai-settings-grid">
-          <div class="modal-section modal-section-wide">
-            <div class="modal-label">Prompt Instructions</div>
-            <div class="ai-settings-toggle-row">
-              <div class="ai-reply-row ai-reply-row--settings">
-                <span class="ai-reply-label">Prompt</span>
-                <button id="aiSettingsEnableInstructions" type="button" class="ai-reply-btn" aria-pressed="false">off</button>
+        <div class="ai-settings-tabs" role="tablist" aria-label="AI settings sections">
+          <button id="aiSettingsTabGeneral" type="button" class="chat-mode-btn is-active" role="tab" aria-selected="true" data-ai-tab="general">General</button>
+          <button id="aiSettingsTabIntegrations" type="button" class="chat-mode-btn" role="tab" aria-selected="false" data-ai-tab="integrations">Integrations</button>
+        </div>
+        <div class="ai-settings-panels">
+          <div class="ai-settings-tab-panel ai-settings-grid" data-ai-panel="general" role="tabpanel">
+            <div class="modal-section modal-section-wide">
+              <div class="modal-label">Prompt Instructions</div>
+              <div class="ai-settings-toggle-row">
+                <div class="ai-reply-row ai-reply-row--settings">
+                  <span class="ai-reply-label">Prompt</span>
+                  <button id="aiSettingsEnableInstructions" type="button" class="ai-reply-btn" aria-pressed="false">off</button>
+                </div>
+                <div class="ai-reply-row ai-reply-row--settings">
+                  <span class="ai-reply-label">Telemetry</span>
+                  <button id="aiSettingsUseTelemetry" type="button" class="ai-reply-btn" aria-pressed="false">off</button>
+                </div>
               </div>
-              <div class="ai-reply-row ai-reply-row--settings">
-                <span class="ai-reply-label">Telemetry</span>
-                <button id="aiSettingsUseTelemetry" type="button" class="ai-reply-btn" aria-pressed="false">off</button>
+              <textarea id="aiSettingsInstructions" rows="6" placeholder="Example: Prefer practical answers. Keep responses short. Always answer in English."></textarea>
+            </div>
+            <div class="modal-section">
+              <div class="modal-label">Local Chat</div>
+              <div class="ai-settings-input-grid">
+                <label class="ai-settings-field" for="aiSettingsLocalTemperature"><span>Temperature</span><input id="aiSettingsLocalTemperature" type="number" min="0" max="2" step="0.05"></label>
+                <label class="ai-settings-field" for="aiSettingsLocalTopP"><span>Top P</span><input id="aiSettingsLocalTopP" type="number" min="0.05" max="1" step="0.05"></label>
+                <label class="ai-settings-field" for="aiSettingsLocalMaxTokens"><span>Max Tokens</span><input id="aiSettingsLocalMaxTokens" type="number" min="32" max="2048" step="1"></label>
               </div>
             </div>
-            <textarea id="aiSettingsInstructions" rows="6" placeholder="Example: Prefer practical answers. Keep responses short. Always answer in English."></textarea>
-          </div>
-          <div class="modal-section">
-            <div class="modal-label">Local Chat</div>
-            <div class="ai-settings-input-grid">
-              <label class="ai-settings-field" for="aiSettingsLocalTemperature"><span>Temperature</span><input id="aiSettingsLocalTemperature" type="number" min="0" max="2" step="0.05"></label>
-              <label class="ai-settings-field" for="aiSettingsLocalTopP"><span>Top P</span><input id="aiSettingsLocalTopP" type="number" min="0.05" max="1" step="0.05"></label>
-              <label class="ai-settings-field" for="aiSettingsLocalMaxTokens"><span>Max Tokens</span><input id="aiSettingsLocalMaxTokens" type="number" min="32" max="2048" step="1"></label>
+            <div class="modal-section">
+              <div class="modal-label">Mesh Replies</div>
+              <div class="ai-settings-input-grid">
+                <label class="ai-settings-field" for="aiSettingsMeshTemperature"><span>Temperature</span><input id="aiSettingsMeshTemperature" type="number" min="0" max="2" step="0.05"></label>
+                <label class="ai-settings-field" for="aiSettingsMeshTopP"><span>Top P</span><input id="aiSettingsMeshTopP" type="number" min="0.05" max="1" step="0.05"></label>
+                <label class="ai-settings-field" for="aiSettingsMeshMaxTokens"><span>Max Tokens</span><input id="aiSettingsMeshMaxTokens" type="number" min="32" max="512" step="1"></label>
+              </div>
+            </div>
+            <div class="modal-section modal-section-wide">
+              <div class="modal-label">Command Channels</div>
+              <div class="device-status-text">Channels the node answers <code>/commands</code> on. Direct messages always work.</div>
+              <div id="aiSettingsCommandChannels" class="ai-settings-command-channels"></div>
             </div>
           </div>
-          <div class="modal-section">
-            <div class="modal-label">Mesh Replies</div>
-            <div class="ai-settings-input-grid">
-              <label class="ai-settings-field" for="aiSettingsMeshTemperature"><span>Temperature</span><input id="aiSettingsMeshTemperature" type="number" min="0" max="2" step="0.05"></label>
-              <label class="ai-settings-field" for="aiSettingsMeshTopP"><span>Top P</span><input id="aiSettingsMeshTopP" type="number" min="0.05" max="1" step="0.05"></label>
-              <label class="ai-settings-field" for="aiSettingsMeshMaxTokens"><span>Max Tokens</span><input id="aiSettingsMeshMaxTokens" type="number" min="32" max="512" step="1"></label>
+          <div class="ai-settings-tab-panel ai-settings-grid" data-ai-panel="integrations" role="tabpanel" hidden>
+            <div class="modal-section modal-section-wide">
+              <div class="modal-label">Wiki</div>
+              <div class="device-status-text">Answer <code>/wiki</code> questions from Wikipedia.</div>
+              <div class="ai-reply-row ai-reply-row--settings">
+                <span class="ai-reply-label">Enabled</span>
+                <button id="integrationWikiToggle" type="button" class="ai-reply-btn" aria-pressed="false">off</button>
+              </div>
             </div>
-          </div>
-          <div class="modal-section">
-            <div class="modal-label">Command Channels</div>
-            <div class="device-status-text">Channels the node answers <code>/commands</code> on. Direct messages always work.</div>
-            <div id="aiSettingsCommandChannels" class="ai-settings-command-channels"></div>
-          </div>
-          <div class="modal-section modal-section-wide">
-            <div class="modal-label">Integrations</div>
-            <div class="device-status-text">Knowledge sources the node can answer <code>/commands</code> from.</div>
-            <div class="ai-reply-row ai-reply-row--settings">
-              <span class="ai-reply-label">Wiki</span>
-              <button id="integrationWikiToggle" type="button" class="ai-reply-btn" aria-pressed="false">off</button>
+            <div class="modal-section modal-section-wide">
+              <div class="modal-label">Pretix</div>
+              <div class="device-status-text">Answer <code>/pretix</code> questions from a conference schedule.xml.</div>
+              <div class="ai-reply-row ai-reply-row--settings">
+                <span class="ai-reply-label">Enabled</span>
+                <button id="integrationPretixToggle" type="button" class="ai-reply-btn" aria-pressed="false">off</button>
+              </div>
+              <label class="ai-settings-field" for="integrationPretixUrl"><span>Schedule.xml URL</span><input id="integrationPretixUrl" type="url" placeholder="https://…/schedule.xml"></label>
             </div>
-            <div class="ai-reply-row ai-reply-row--settings">
-              <span class="ai-reply-label">Pretix</span>
-              <button id="integrationPretixToggle" type="button" class="ai-reply-btn" aria-pressed="false">off</button>
-            </div>
-            <label class="ai-settings-field" for="integrationPretixUrl"><span>Pretix schedule.xml URL</span><input id="integrationPretixUrl" type="url" placeholder="https://…/schedule.xml"></label>
           </div>
         </div>
         <div class="ai-settings-actions">

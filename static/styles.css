@@ -2110,9 +2110,28 @@ body.is-resizing-panels {
 
 .ai-settings-layout {
     display: grid;
-    grid-template-rows: auto auto minmax(0, 1fr) auto;
+    grid-template-rows: auto auto auto minmax(0, 1fr) auto;
     gap: 10px;
     min-height: 0;
+}
+
+/* Tab bar reuses the chat-mode button look (active = green). */
+.ai-settings-tabs {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 4px;
+}
+
+/* Scroll container for the active tab panel. */
+.ai-settings-panels {
+    min-height: 0;
+    overflow: auto;
+    padding-right: 2px;
+}
+
+/* display:grid on the panel would beat the [hidden] UA rule, so force it. */
+.ai-settings-tab-panel[hidden] {
+    display: none;
 }
 
 .ai-settings-meta {
@@ -2145,8 +2164,7 @@ body.is-resizing-panels {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     gap: 10px;
     min-height: 0;
-    overflow: auto;
-    padding-right: 2px;
+    align-content: start;
 }
 
 .ai-settings-input-grid {

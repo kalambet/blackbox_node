@@ -85,6 +85,8 @@ let aiCommandChannelsLoaded = [];
 const integrationWikiToggle = document.getElementById("integrationWikiToggle");
 const integrationPretixToggle = document.getElementById("integrationPretixToggle");
 const integrationPretixUrl = document.getElementById("integrationPretixUrl");
+const aiSettingsTabButtons = Array.from(document.querySelectorAll("[data-ai-tab]"));
+const aiSettingsTabPanels = Array.from(document.querySelectorAll("[data-ai-panel]"));
 const helpModal = document.getElementById("helpModal");
 const helpModalClose = document.getElementById("helpModalClose");
 const helpDonateButton = document.getElementById("helpDonateButton");
@@ -2015,9 +2017,22 @@ async function loadAiSettings() {
   return payload;
 }
 
+// Switch the AI Settings modal between its tabs (General / Integrations).
+function setAiSettingsTab(name) {
+  aiSettingsTabButtons.forEach((btn) => {
+    const active = btn.dataset.aiTab === name;
+    btn.classList.toggle("is-active", active);
+    btn.setAttribute("aria-selected", String(active));
+  });
+  aiSettingsTabPanels.forEach((panel) => {
+    panel.hidden = panel.dataset.aiPanel !== name;
+  });
+}
+
 function openAiSettingsModal() {
   aiSettingsModal.classList.remove("hidden");
   aiSettingsModal.setAttribute("aria-hidden", "false");
+  setAiSettingsTab("general");
   aiSettingsStatusText.textContent = "Loading AI settings...";
   // Refresh the radio's channel slots so the command-channel list is current.
   if (latestMeshtasticConnected) {
@@ -5962,6 +5977,9 @@ aiSettingsUseTelemetry.addEventListener("click", () => {
   toggle.addEventListener("click", () => {
     setAiSettingsToggle(toggle, toggle.getAttribute("aria-pressed") !== "true");
   });
+});
+aiSettingsTabButtons.forEach((btn) => {
+  btn.addEventListener("click", () => setAiSettingsTab(btn.dataset.aiTab));
 });
 aiSettingsForm.addEventListener("submit", async (event) => {
   event.preventDefault();
