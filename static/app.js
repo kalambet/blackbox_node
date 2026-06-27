@@ -83,8 +83,8 @@ const aiSettingsMeshMaxTokens = document.getElementById("aiSettingsMeshMaxTokens
 const aiSettingsCommandChannels = document.getElementById("aiSettingsCommandChannels");
 let aiCommandChannelsLoaded = [];
 const integrationWikiToggle = document.getElementById("integrationWikiToggle");
-const integrationPretixToggle = document.getElementById("integrationPretixToggle");
-const integrationPretixUrl = document.getElementById("integrationPretixUrl");
+const integrationPretalxToggle = document.getElementById("integrationPretalxToggle");
+const integrationPretalxUrl = document.getElementById("integrationPretalxUrl");
 const aiSettingsTabButtons = Array.from(document.querySelectorAll("[data-ai-tab]"));
 const aiSettingsTabPanels = Array.from(document.querySelectorAll("[data-ai-panel]"));
 const helpModal = document.getElementById("helpModal");
@@ -2006,8 +2006,8 @@ function renderAiSettings(payload) {
   renderAiCommandChannels(aiCommandChannelsLoaded);
   const integrations = payload?.integrations || {};
   if (integrationWikiToggle) setAiSettingsToggle(integrationWikiToggle, integrations.wikipedia?.enabled !== false);
-  if (integrationPretixToggle) setAiSettingsToggle(integrationPretixToggle, integrations.pretix?.enabled === true);
-  if (integrationPretixUrl) integrationPretixUrl.value = integrations.pretix?.url || "";
+  if (integrationPretalxToggle) setAiSettingsToggle(integrationPretalxToggle, integrations.pretalx?.enabled === true);
+  if (integrationPretalxUrl) integrationPretalxUrl.value = integrations.pretalx?.url || "";
   toggleAiInstructionsInput();
 }
 
@@ -2072,9 +2072,9 @@ function collectAiSettingsForm() {
 function collectIntegrationsForm() {
   return {
     wikipedia: { enabled: integrationWikiToggle?.getAttribute("aria-pressed") === "true" },
-    pretix: {
-      enabled: integrationPretixToggle?.getAttribute("aria-pressed") === "true",
-      url: (integrationPretixUrl?.value || "").trim(),
+    pretalx: {
+      enabled: integrationPretalxToggle?.getAttribute("aria-pressed") === "true",
+      url: (integrationPretalxUrl?.value || "").trim(),
     },
   };
 }
@@ -5972,7 +5972,7 @@ aiSettingsUseTelemetry.addEventListener("click", () => {
   const next = aiSettingsUseTelemetry.getAttribute("aria-pressed") !== "true";
   setAiSettingsToggle(aiSettingsUseTelemetry, next);
 });
-[integrationWikiToggle, integrationPretixToggle].forEach((toggle) => {
+[integrationWikiToggle, integrationPretalxToggle].forEach((toggle) => {
   if (!toggle) return;
   toggle.addEventListener("click", () => {
     setAiSettingsToggle(toggle, toggle.getAttribute("aria-pressed") !== "true");

@@ -2714,7 +2714,7 @@ function buildBatteryCommandContext() {
 
 // ===== Agent commands (plan.md Phase 6) ==================================
 // AgentCommand registry + pluggable KnowledgeSources. /wiki is plugin #1;
-// PreTix/PreTalx sources register the same way later.
+// PreTalx/PreTalx sources register the same way later.
 
 const AGENT_TOTAL_BUDGET_MS = 90000;
 const AGENT_SOURCE_TIMEOUT_MS = 8000;
@@ -2726,37 +2726,40 @@ const AGENT_LOCAL_MAX_TOKENS = 450;
 
 function getKnowledgeSettings() {
   const knowledge = appSettings.knowledge || {};
+  // Back-compat: the source was briefly persisted under the key "pretix".
+  const pretalx = knowledge.pretalx || knowledge.pretix || {};
   return {
     wikipedia: {
       enabled: knowledge.wikipedia?.enabled !== false, // default ON
       lang: String(knowledge.wikipedia?.lang || "en"),
     },
-    pretix: {
-      enabled: knowledge.pretix?.enabled === true, // default OFF until a URL is set
-      url: String(knowledge.pretix?.url || ""),
+    pretalx: {
+      enabled: pretalx.enabled === true, // default OFF until a URL is set
+      url: String(pretalx.url || ""),
     },
   };
 }
 
-// Persist the "Integrations" settings (knowledge sources). Validates the pretix
+// Persist the "Integrations" settings (knowledge sources). Validates the pretalx
 // schedule URL and invalidates the cached schedule whenever the URL changes.
 function updateKnowledgeSettings(next) {
   const source = next && typeof next === "object" ? next : {};
   const wiki = source.wikipedia && typeof source.wikipedia === "object" ? source.wikipedia : {};
-  const pretix = source.pretix && typeof source.pretix === "object" ? source.pretix : {};
-  let url = String(pretix.url || "").trim().slice(0, 500);
+  const pretalx = source.pretalx && typeof source.pretalx === "object" ? source.pretalx : {};
+  let url = String(pretalx.url || "").trim().slice(0, 500);
   if (url && !/^https?:\/\//i.test(url)) {
     url = "";
   }
-  const prevUrl = String(appSettings.knowledge?.pretix?.url || "");
+  const prevUrl = String(appSettings.knowledge?.pretalx?.url || appSettings.knowledge?.pretix?.url || "");
   appSettings.knowledge = {
     ...(appSettings.knowledge || {}),
     wikipedia: {
       ...(appSettings.knowledge?.wikipedia || {}),
       enabled: wiki.enabled !== false,
     },
-    pretix: { enabled: pretix.enabled === true, url },
+    pretalx: { enabled: pretalx.enabled === true, url },
   };
+  delete appSettings.knowledge.pretix; // drop the old key name if it lingers
   persistSettings();
   if (url !== prevUrl) {
     invalidateScheduleCache();
@@ -2895,7 +2898,7 @@ function parseFrabSchedule(xml) {
 }
 
 async function ensureSchedule() {
-  const { enabled, url } = getKnowledgeSettings().pretix;
+  const { enabled, url } = getKnowledgeSettings().pretalx;
   if (!enabled || !url) return [];
   const fresh =
     scheduleCache.url === url &&
@@ -2999,8 +3002,8 @@ function findScheduleEvent(events, ref) {
   );
 }
 
-// Tool defs the model sees for the pretix source (schedule-native, time-aware).
-function pretixBuildTools() {
+// Tool defs the model sees for the pretalx source (schedule-native, time-aware).
+function pretalxBuildTools() {
   return [
     {
       type: "function",
@@ -3036,7 +3039,7 @@ function pretixBuildTools() {
   ];
 }
 
-async function pretixRunTool(name, args, collected, ctx) {
+async function pretalxRunTool(name, args, collected, ctx) {
   const nowMs = ctx?.now ? ctx.now.getTime() : Date.now();
   if (name === "find_sessions") {
     const events = await ensureSchedule();
@@ -3069,12 +3072,12 @@ async function pretixRunTool(name, args, collected, ctx) {
     collected.fetched.push(ev.title);
     return JSON.stringify({ title: ev.title, text: scheduleDetail(ev).slice(0, AGENT_EXTRACT_PER_ARTICLE) });
   }
-  return null; // not a pretix tool
+  return null; // not a pretalx tool
 }
 
 // Non-tool fallback for models that don't emit tool calls: extract temporal
 // intent heuristically, filter, and synthesize from the relevant sessions.
-async function pretixPipeline(command, question, surface, ctx, collected) {
+async function pretalxPipeline(command, question, surface, ctx, collected) {
   const events = await ensureSchedule();
   if (!events.length) throw new Error("no schedule");
   const nowMs = ctx?.now ? ctx.now.getTime() : Date.now();
@@ -3156,23 +3159,23 @@ const knowledgeSources = {
       };
     },
   },
-  pretix: {
-    id: "pretix",
+  pretalx: {
+    id: "pretalx",
     kind: "online",
-    label: "Pretix",
+    label: "Pretalx",
     available() {
-      const s = getKnowledgeSettings().pretix;
+      const s = getKnowledgeSettings().pretalx;
       return Boolean(s.enabled && s.url);
     },
-    // Schedule-native, time-aware tools (see pretixBuildTools/pretixRunTool).
+    // Schedule-native, time-aware tools (see pretalxBuildTools/pretalxRunTool).
     buildTools(ctx) {
-      return pretixBuildTools(ctx);
+      return pretalxBuildTools(ctx);
     },
     async runTool(name, args, collected, ctx) {
-      return pretixRunTool(name, args, collected, ctx);
+      return pretalxRunTool(name, args, collected, ctx);
     },
     async pipeline(command, question, surface, ctx, collected) {
-      return pretixPipeline(command, question, surface, ctx, collected);
+      return pretalxPipeline(command, question, surface, ctx, collected);
     },
     // Base search/fetch so the source still satisfies the generic interface.
     async search(query, limit = 8) {
@@ -3211,9 +3214,9 @@ const agentCommands = [
     },
   },
   {
-    name: "pretix",
-    helpText: "/pretix <question> - answer about the event schedule",
-    sources: ["pretix"],
+    name: "pretalx",
+    helpText: "/pretalx <question> - answer about the event schedule",
+    sources: ["pretalx"],
     synthesisPrompt(surface) {
       return [
         "You answer questions about the conference schedule using ONLY data returned by the find_sessions / session_details tools - never invent sessions, times, rooms or speakers.",
