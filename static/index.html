@@ -389,12 +389,28 @@
             <button id="meshAiReplyToggle" type="button" class="ai-reply-btn" aria-pressed="false">off</button>
           </div>
         </div>
-        <div class="ai-settings-tabs" role="tablist" aria-label="AI settings sections">
-          <button id="aiSettingsTabGeneral" type="button" class="chat-mode-btn is-active" role="tab" aria-selected="true" data-ai-tab="general">General</button>
-          <button id="aiSettingsTabIntegrations" type="button" class="chat-mode-btn" role="tab" aria-selected="false" data-ai-tab="integrations">Integrations</button>
-        </div>
-        <div class="ai-settings-panels">
-          <div class="ai-settings-tab-panel ai-settings-grid" data-ai-panel="general" role="tabpanel">
+        <div class="ai-nav">
+          <div class="ai-nav-bar">
+            <button id="aiNavBack" type="button" class="setup-btn ai-nav-back" hidden>&lsaquo; BACK</button>
+            <span id="aiNavCrumb" class="ai-nav-crumb">AI SETTINGS</span>
+          </div>
+
+          <!-- Root: category menu -->
+          <div class="setup-menu ai-nav-screen" data-ai-screen="root">
+            <button type="button" class="setup-menu-item" data-ai-go="general">
+              <span class="setup-cursor">&gt;</span>
+              <span>General</span>
+              <span class="setup-menu-item-desc">instructions &amp; generation</span>
+            </button>
+            <button type="button" class="setup-menu-item" data-ai-go="integrations">
+              <span class="setup-cursor">&gt;</span>
+              <span>Integrations</span>
+              <span class="setup-menu-item-desc">commands / wiki / pretalx</span>
+            </button>
+          </div>
+
+          <!-- General detail -->
+          <div class="ai-nav-screen ai-settings-grid hidden" data-ai-screen="general">
             <div class="modal-section modal-section-wide">
               <div class="modal-label">Prompt Instructions</div>
               <div class="ai-settings-toggle-row">
@@ -425,13 +441,38 @@
                 <label class="ai-settings-field" for="aiSettingsMeshMaxTokens"><span>Max Tokens</span><input id="aiSettingsMeshMaxTokens" type="number" min="32" max="512" step="1"></label>
               </div>
             </div>
+          </div>
+
+          <!-- Integrations menu -->
+          <div class="setup-menu ai-nav-screen hidden" data-ai-screen="integrations">
+            <button type="button" class="setup-menu-item" data-ai-go="commands">
+              <span class="setup-cursor">&gt;</span>
+              <span>Commands</span>
+              <span class="setup-menu-item-desc">built-in /commands per channel</span>
+            </button>
+            <button type="button" class="setup-menu-item" data-ai-go="wiki">
+              <span class="setup-cursor">&gt;</span>
+              <span>Wiki</span>
+              <span class="setup-menu-item-desc">wikipedia answers</span>
+            </button>
+            <button type="button" class="setup-menu-item" data-ai-go="pretalx">
+              <span class="setup-cursor">&gt;</span>
+              <span>Pretalx</span>
+              <span class="setup-menu-item-desc">conference schedule</span>
+            </button>
+          </div>
+
+          <!-- Commands detail (built-in system commands) -->
+          <div class="ai-nav-screen ai-settings-grid hidden" data-ai-screen="commands">
             <div class="modal-section modal-section-wide">
               <div class="modal-label">Command Channels</div>
-              <div class="device-status-text">Channels the node answers built-in <code>/commands</code> on (summary, battery, trace…). Direct messages always work. Knowledge commands are set per channel in Integrations.</div>
+              <div class="device-status-text">Channels the node answers built-in <code>/commands</code> on (summary, battery, trace…). Direct messages always work.</div>
               <div id="aiSettingsCommandChannels" class="ai-settings-command-channels"></div>
             </div>
           </div>
-          <div class="ai-settings-tab-panel ai-settings-grid" data-ai-panel="integrations" role="tabpanel" hidden>
+
+          <!-- Wiki detail -->
+          <div class="ai-nav-screen ai-settings-grid hidden" data-ai-screen="wiki">
             <div class="modal-section modal-section-wide">
               <div class="modal-label">Wiki</div>
               <div class="device-status-text">Answer <code>/wiki</code> questions from Wikipedia.</div>
@@ -443,6 +484,10 @@
               <div class="device-status-text">Per channel: <code>off</code>, <code>cmd</code> (explicit <code>/wiki</code> only), or <code>ambient</code> (answer every question).</div>
               <div id="wikiChannelBindings" class="ai-settings-command-channels"></div>
             </div>
+          </div>
+
+          <!-- Pretalx detail -->
+          <div class="ai-nav-screen ai-settings-grid hidden" data-ai-screen="pretalx">
             <div class="modal-section modal-section-wide">
               <div class="modal-label">Pretalx</div>
               <div class="device-status-text">Answer <code>/pretalx</code> questions from a conference schedule.xml.</div>

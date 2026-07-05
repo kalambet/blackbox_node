@@ -91,8 +91,8 @@ let channelCommandsLoaded = [];
 const integrationWikiToggle = document.getElementById("integrationWikiToggle");
 const integrationPretalxToggle = document.getElementById("integrationPretalxToggle");
 const integrationPretalxUrl = document.getElementById("integrationPretalxUrl");
-const aiSettingsTabButtons = Array.from(document.querySelectorAll("[data-ai-tab]"));
-const aiSettingsTabPanels = Array.from(document.querySelectorAll("[data-ai-panel]"));
+const aiNavBack = document.getElementById("aiNavBack");
+const aiNavCrumb = document.getElementById("aiNavCrumb");
 const helpModal = document.getElementById("helpModal");
 const helpModalClose = document.getElementById("helpModalClose");
 const helpDonateButton = document.getElementById("helpDonateButton");
@@ -2106,22 +2106,37 @@ async function loadAiSettings() {
   return payload;
 }
 
-// Switch the AI Settings modal between its tabs (General / Integrations).
-function setAiSettingsTab(name) {
-  aiSettingsTabButtons.forEach((btn) => {
-    const active = btn.dataset.aiTab === name;
-    btn.classList.toggle("is-active", active);
-    btn.setAttribute("aria-selected", String(active));
+// Drill-down navigation for the AI Settings modal (radio-SETUP style): a root
+// category menu (General / Integrations), an Integrations sub-menu, and a detail
+// screen per entry. All screens live in the DOM at once; we toggle visibility.
+const AI_NAV = {
+  root: { crumb: "AI SETTINGS", parent: null },
+  general: { crumb: "GENERAL", parent: "root" },
+  integrations: { crumb: "INTEGRATIONS", parent: "root" },
+  commands: { crumb: "INTEGRATIONS / COMMANDS", parent: "integrations" },
+  wiki: { crumb: "INTEGRATIONS / WIKI", parent: "integrations" },
+  pretalx: { crumb: "INTEGRATIONS / PRETALX", parent: "integrations" },
+};
+let aiNavScreen = "root";
+
+function showAiScreen(name) {
+  aiNavScreen = AI_NAV[name] ? name : "root";
+  const meta = AI_NAV[aiNavScreen];
+  aiSettingsForm.querySelectorAll("[data-ai-screen]").forEach((el) => {
+    el.classList.toggle("hidden", el.dataset.aiScreen !== aiNavScreen);
   });
-  aiSettingsTabPanels.forEach((panel) => {
-    panel.hidden = panel.dataset.aiPanel !== name;
-  });
+  if (aiNavCrumb) aiNavCrumb.textContent = meta.crumb;
+  if (aiNavBack) aiNavBack.hidden = !meta.parent;
+}
+
+function aiNavGoBack() {
+  showAiScreen(AI_NAV[aiNavScreen]?.parent || "root");
 }
 
 function openAiSettingsModal() {
   aiSettingsModal.classList.remove("hidden");
   aiSettingsModal.setAttribute("aria-hidden", "false");
-  setAiSettingsTab("general");
+  showAiScreen("root");
   aiSettingsStatusText.textContent = "Loading AI settings...";
   // Refresh the radio's channel slots so the command-channel list is current.
   if (latestMeshtasticConnected) {
@@ -6068,9 +6083,10 @@ aiSettingsUseTelemetry.addEventListener("click", () => {
     setAiSettingsToggle(toggle, toggle.getAttribute("aria-pressed") !== "true");
   });
 });
-aiSettingsTabButtons.forEach((btn) => {
-  btn.addEventListener("click", () => setAiSettingsTab(btn.dataset.aiTab));
+aiSettingsForm.querySelectorAll("[data-ai-go]").forEach((btn) => {
+  btn.addEventListener("click", () => showAiScreen(btn.dataset.aiGo));
 });
+if (aiNavBack) aiNavBack.addEventListener("click", aiNavGoBack);
 aiSettingsForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   aiSettingsStatusText.textContent = "Saving AI settings...";
@@ -6237,7 +6253,14 @@ document.addEventListener("keydown", (event) => {
     return;
   }
   if (event.key === "Escape" && !aiSettingsModal.classList.contains("hidden")) {
-    closeAiSettingsModal();
+    const tag = String(event.target?.tagName || "").toLowerCase();
+    if (tag === "input" || tag === "textarea") {
+      event.target.blur();
+    } else if (aiNavScreen !== "root") {
+      aiNavGoBack();
+    } else {
+      closeAiSettingsModal();
+    }
     return;
   }
   if (event.key === "Escape" && !helpModal.classList.contains("hidden")) {
