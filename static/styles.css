@@ -2623,6 +2623,15 @@ body.is-resizing-panels {
     text-transform: uppercase;
 }
 
+/* Secondary heading inside a modal section (e.g. per-command channel groups). */
+.modal-sublabel {
+    font-family: var(--font-display);
+    font-size: 8px;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-top: 8px;
+}
+
 .modal-kv {
     display: grid;
     gap: 4px;
@@ -4923,6 +4932,30 @@ textarea,
 .ai-reply-btn--off {
     background: var(--danger-active-bg);
     color: var(--danger-active);
+    border-top-color: var(--edge-dark);
+    border-left-color: var(--edge-dark);
+    border-right-color: var(--edge-light);
+    border-bottom-color: var(--edge-light);
+}
+
+/* Tri-state knowledge-command binding button: off (neutral) / cmd / ambient. */
+.ai-binding-btn {
+    min-width: 62px;
+    text-align: center;
+}
+
+.ai-binding-btn.is-explicit {
+    background: var(--success-active-bg);
+    color: var(--success-active);
+    border-top-color: var(--edge-dark);
+    border-left-color: var(--edge-dark);
+    border-right-color: var(--edge-light);
+    border-bottom-color: var(--edge-light);
+}
+
+.ai-binding-btn.is-ambient {
+    background: #2e2a16;
+    color: var(--warn);
     border-top-color: var(--edge-dark);
     border-left-color: var(--edge-dark);
     border-right-color: var(--edge-light);

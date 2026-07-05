@@ -82,6 +82,12 @@ const aiSettingsMeshTopP = document.getElementById("aiSettingsMeshTopP");
 const aiSettingsMeshMaxTokens = document.getElementById("aiSettingsMeshMaxTokens");
 const aiSettingsCommandChannels = document.getElementById("aiSettingsCommandChannels");
 let aiCommandChannelsLoaded = [];
+// Knowledge commands whose per-channel bindings are edited in the Integrations tab.
+const KNOWLEDGE_COMMANDS = [
+  { name: "wiki", containerId: "wikiChannelBindings", ambientCapable: true },
+  { name: "pretalx", containerId: "pretalxChannelBindings", ambientCapable: true },
+];
+let channelCommandsLoaded = [];
 const integrationWikiToggle = document.getElementById("integrationWikiToggle");
 const integrationPretalxToggle = document.getElementById("integrationPretalxToggle");
 const integrationPretalxUrl = document.getElementById("integrationPretalxUrl");
@@ -1036,8 +1042,10 @@ function applyRadioChannelsToChat(radioChannels) {
   }
   // Keep the AI-settings command-channel toggles in sync if that modal is open.
   if (aiSettingsModal && !aiSettingsModal.classList.contains("hidden")) {
-    const hasToggles = aiSettingsCommandChannels?.querySelector("button[data-channel-index]");
+    const hasToggles = aiSettingsCommandChannels?.querySelector("button[data-channel-index]:not([data-command])");
     renderAiCommandChannels(hasToggles ? getAiCommandChannelSelection() : aiCommandChannelsLoaded);
+    const hasBindings = document.querySelector("button[data-command][data-bind-channel]");
+    renderChannelCommandBindings(hasBindings ? getChannelCommandBindings() : channelCommandsLoaded);
   }
 }
 
@@ -1983,10 +1991,90 @@ function getAiCommandChannelSelection() {
   if (!aiSettingsCommandChannels) {
     return [];
   }
-  return Array.from(aiSettingsCommandChannels.querySelectorAll("button[data-channel-index]"))
+  return Array.from(aiSettingsCommandChannels.querySelectorAll("button[data-channel-index]:not([data-command])"))
     .filter((btn) => btn.getAttribute("aria-pressed") === "true")
     .map((btn) => Number(btn.dataset.channelIndex))
     .filter((n) => Number.isInteger(n));
+}
+
+// ---- Per-channel knowledge-command bindings (Integrations tab) --------------
+const CHANNEL_BINDING_STATES = ["off", "explicit", "ambient"];
+const CHANNEL_BINDING_LABELS = { off: "off", explicit: "cmd", ambient: "ambient" };
+
+function setChannelBindingButton(btn) {
+  const state = btn.dataset.state || "off";
+  btn.textContent = CHANNEL_BINDING_LABELS[state] || "off";
+  btn.setAttribute("aria-pressed", String(state !== "off"));
+  btn.classList.toggle("is-explicit", state === "explicit");
+  btn.classList.toggle("is-ambient", state === "ambient");
+}
+
+function cycleChannelBindingButton(btn, ambientCapable) {
+  const order = ambientCapable ? CHANNEL_BINDING_STATES : ["off", "explicit"];
+  const next = order[(order.indexOf(btn.dataset.state || "off") + 1) % order.length];
+  if (next === "ambient") {
+    // Only one ambient command per channel: demote any other ambient on this channel.
+    const ch = btn.dataset.bindChannel;
+    document.querySelectorAll(`button[data-command][data-bind-channel="${ch}"]`).forEach((other) => {
+      if (other !== btn && other.dataset.state === "ambient") {
+        other.dataset.state = "explicit";
+        setChannelBindingButton(other);
+      }
+    });
+  }
+  btn.dataset.state = next;
+  setChannelBindingButton(btn);
+}
+
+function renderChannelCommandBindings(bindings) {
+  channelCommandsLoaded = Array.isArray(bindings) ? bindings : [];
+  const channels = (chatState.channels || []).filter((c) => Number.isInteger(c.channelIndex));
+  KNOWLEDGE_COMMANDS.forEach((cmd) => {
+    const container = document.getElementById(cmd.containerId);
+    if (!container) return;
+    container.innerHTML = "";
+    if (!channels.length) {
+      const empty = document.createElement("div");
+      empty.className = "device-status-text";
+      empty.textContent = latestMeshtasticConnected
+        ? "No channels configured. Add them in SETUP → Channels."
+        : "Connect the radio to list channels.";
+      container.appendChild(empty);
+      return;
+    }
+    channels.forEach((ch) => {
+      const binding = channelCommandsLoaded.find(
+        (b) => Number(b.channel) === ch.channelIndex && b.command === cmd.name
+      );
+      const state = binding?.mode === "ambient" ? "ambient" : binding?.mode === "explicit" ? "explicit" : "off";
+      const row = document.createElement("div");
+      row.className = "ai-reply-row ai-reply-row--settings ai-settings-channel-toggle";
+      const span = document.createElement("span");
+      span.className = "ai-reply-label";
+      span.textContent = `CH${ch.channelIndex} ${ch.name || ""}`.trim();
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "ai-reply-btn ai-binding-btn";
+      btn.dataset.command = cmd.name;
+      btn.dataset.bindChannel = String(ch.channelIndex);
+      btn.dataset.state = state;
+      setChannelBindingButton(btn);
+      btn.addEventListener("click", () => cycleChannelBindingButton(btn, cmd.ambientCapable));
+      row.append(span, btn);
+      container.appendChild(row);
+    });
+  });
+}
+
+function getChannelCommandBindings() {
+  return Array.from(document.querySelectorAll("button[data-command][data-bind-channel]"))
+    .map((btn) => ({
+      command: btn.dataset.command,
+      channel: Number(btn.dataset.bindChannel),
+      state: btn.dataset.state || "off",
+    }))
+    .filter((b) => b.state !== "off" && Number.isInteger(b.channel))
+    .map((b) => ({ channel: b.channel, command: b.command, mode: b.state === "ambient" ? "ambient" : "explicit" }));
 }
 
 function renderAiSettings(payload) {
@@ -2004,6 +2092,7 @@ function renderAiSettings(payload) {
   aiSettingsMeshMaxTokens.value = settings.meshMaxTokens ?? 120;
   aiCommandChannelsLoaded = Array.isArray(settings.commandChannels) ? settings.commandChannels : [];
   renderAiCommandChannels(aiCommandChannelsLoaded);
+  renderChannelCommandBindings(Array.isArray(settings.channelCommands) ? settings.channelCommands : []);
   const integrations = payload?.integrations || {};
   if (integrationWikiToggle) setAiSettingsToggle(integrationWikiToggle, integrations.wikipedia?.enabled !== false);
   if (integrationPretalxToggle) setAiSettingsToggle(integrationPretalxToggle, integrations.pretalx?.enabled === true);
@@ -2066,6 +2155,7 @@ function collectAiSettingsForm() {
     meshTopP: Number(aiSettingsMeshTopP.value),
     meshMaxTokens: Number(aiSettingsMeshMaxTokens.value),
     commandChannels: getAiCommandChannelSelection(),
+    channelCommands: getChannelCommandBindings(),
   };
 }
 

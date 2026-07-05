@@ -2309,6 +2309,35 @@ function clampInteger(value, min, max, fallback) {
   return Math.min(max, Math.max(min, num));
 }
 
+// Per-(channel, command) bindings for knowledge commands. Each entry associates
+// one agent command with one channel in either "explicit" mode (reacts only to
+// the typed /command) or "ambient" mode (answers every free-text message on the
+// channel). Validated structurally here; registry/ambientCapable checks happen
+// lazily at dispatch so this can run before agentCommands is initialized.
+function normalizeChannelCommands(input) {
+  if (!Array.isArray(input)) return [];
+  const seen = new Set(); // "channel:command"
+  const ambientByChannel = new Set(); // at most one ambient command per channel
+  const out = [];
+  for (const entry of input) {
+    if (!entry || typeof entry !== "object") continue;
+    const channel = Number.parseInt(entry.channel, 10);
+    if (!Number.isInteger(channel) || channel < 0 || channel > 7) continue;
+    const command = String(entry.command || "").replace(/^\//, "").trim().toLowerCase();
+    if (!/^[a-z0-9_-]{1,32}$/.test(command)) continue;
+    const key = `${channel}:${command}`;
+    if (seen.has(key)) continue;
+    let mode = entry.mode === "ambient" ? "ambient" : "explicit";
+    if (mode === "ambient") {
+      if (ambientByChannel.has(channel)) mode = "explicit"; // demote extra ambients
+      else ambientByChannel.add(channel);
+    }
+    seen.add(key);
+    out.push({ channel, command, mode });
+  }
+  return out.sort((a, b) => a.channel - b.channel || a.command.localeCompare(b.command));
+}
+
 function normalizeAiSettings(input) {
   const source = input && typeof input === "object" ? input : {};
   return {
@@ -2328,13 +2357,33 @@ function normalizeAiSettings(input) {
           .map((n) => Number.parseInt(n, 10))
           .filter((n) => Number.isInteger(n) && n >= 0 && n <= 7))].sort((a, b) => a - b)
       : [],
+    channelCommands: normalizeChannelCommands(source.channelCommands),
   };
 }
 
-// Channel indexes the node reacts to /command messages on (in addition to DMs).
+// Channel indexes the node reacts to built-in /command messages on (in addition
+// to DMs). Knowledge/agent commands are gated per-channel via channelCommands.
 function getCommandChannels() {
   const list = appSettings?.aiSettings?.commandChannels;
   return Array.isArray(list) ? list : [];
+}
+
+// Per-(channel, command) knowledge-command bindings (see normalizeChannelCommands).
+function getChannelCommands() {
+  const list = appSettings?.aiSettings?.channelCommands;
+  return Array.isArray(list) ? list : [];
+}
+
+// The binding for an explicit agent command on a channel, or null if not bound.
+function getChannelCommandBinding(channelIndex, commandName) {
+  const name = String(commandName || "").replace(/^\//, "").toLowerCase();
+  return getChannelCommands().find((b) => b.channel === channelIndex && b.command === name) || null;
+}
+
+// The single command bound in ambient mode on a channel, or null.
+function getAmbientCommandForChannel(channelIndex) {
+  const binding = getChannelCommands().find((b) => b.channel === channelIndex && b.mode === "ambient");
+  return binding ? binding.command : null;
 }
 
 function getAiSettingsPayload() {
@@ -3177,6 +3226,14 @@ const knowledgeSources = {
     async pipeline(command, question, surface, ctx, collected) {
       return pretalxPipeline(command, question, surface, ctx, collected);
     },
+    // Ambient relevance heuristic: strong schedule signals answer "yes" cheaply;
+    // otherwise defer (null) to the shared yes/no classifier.
+    matchesAmbient(question) {
+      const q = String(question || "").toLowerCase();
+      if (/\b(now|next|today|tonight|tomorrow|schedule|sessions?|talks?|speakers?|room|rooms|track|tracks|keynote|workshop|agenda|programme?|happening|line ?up|lineup|when'?s|what'?s on)\b/.test(q)) return true;
+      if (/\b\d{1,2}:\d{2}\b/.test(q)) return true;
+      return null;
+    },
     // Base search/fetch so the source still satisfies the generic interface.
     async search(query, limit = 8) {
       const events = await ensureSchedule();
@@ -3195,6 +3252,7 @@ const agentCommands = [
     name: "wiki",
     helpText: "/wiki <question> - answer from Wikipedia",
     sources: ["wikipedia"],
+    ambientCapable: true,
     synthesisPrompt(surface) {
       return [
         "You answer questions using ONLY the supplied Wikipedia context.",
@@ -3217,6 +3275,7 @@ const agentCommands = [
     name: "pretalx",
     helpText: "/pretalx <question> - answer about the event schedule",
     sources: ["pretalx"],
+    ambientCapable: true,
     synthesisPrompt(surface) {
       return [
         "You answer questions about the conference schedule using ONLY data returned by the find_sessions / session_details tools - never invent sessions, times, rooms or speakers.",
@@ -3482,17 +3541,26 @@ async function runAgentPipeline(command, question, surface, deadline, collected,
   throw new Error("no results");
 }
 
-async function runAgentCommand(command, slashCommand, { surface = "local", peerId = null, replyTo = null } = {}) {
+async function runAgentCommand(command, slashCommand, opts = {}) {
   const question = slashCommand.raw.slice(slashCommand.name.length).trim();
+  return runAgentQuestion(command, question, opts);
+}
+
+// Runs an agent command from a raw question (slash path passes the sliced text;
+// the ambient path passes the whole channel message). When suppressFallback is
+// set (ambient mode) an empty/failed answer returns "" so the caller stays
+// silent instead of broadcasting a "no results" reply over the radio.
+async function runAgentQuestion(command, rawQuestion, { surface = "local", peerId = null, replyTo = null, suppressFallback = false } = {}) {
+  const question = String(rawQuestion || "").trim();
   if (!question) {
-    return `Usage: ${command.helpText}`;
+    return suppressFallback ? "" : `Usage: ${command.helpText}`;
   }
   const sourceLabels = command.sources
     .map((id) => knowledgeSources[id])
     .filter((s) => s && s.available())
     .map((s) => s.label.toUpperCase());
   if (!sourceLabels.length) {
-    return "No knowledge sources available (offline or disabled in settings).";
+    return suppressFallback ? "" : "No knowledge sources available (offline or disabled in settings).";
   }
   // No interim "SEARCHING ..." packet on the radio: keep the channel clean and
   // only emit the final answer once inference finishes. The web UI still gets a
@@ -3534,7 +3602,103 @@ async function runAgentCommand(command, slashCommand, { surface = "local", peerI
   if (answer) {
     return surface === "mesh" ? sanitizeMeshReply(answer) : answer;
   }
-  return command.fallback(collected.results);
+  return suppressFallback ? "" : command.fallback(collected.results);
+}
+
+// ---- Ambient channels -------------------------------------------------------
+// A channel bound to a command in "ambient" mode routes every free-text message
+// to that command's source. Guards keep the radio quiet: a relevance prefilter
+// (silent on miss), one in-flight reply per channel, and a per-sender cooldown.
+const AMBIENT_SENDER_COOLDOWN_MS = 25000;
+const ambientInFlight = new Set(); // channelIndex currently generating a reply
+const ambientCooldown = new Map(); // sender -> last-answered timestamp (ms)
+
+// Shared yes/no router: does this free-text message look answerable by the
+// command's source? Tiny token budget; any error/timeout => stay silent.
+async function ambientRelevanceClassifier(command, question) {
+  const label = command.sources
+    .map((id) => knowledgeSources[id]?.label)
+    .filter(Boolean)
+    .join(" / ") || command.name;
+  try {
+    const msg = await agentLlmChat([
+      { role: "system", content: `You are a routing filter. Reply with ONLY "yes" or "no". Answer "yes" if the user message is a question that could plausibly be answered using ${label}. Answer "no" for greetings, small talk, acknowledgements, or unrelated chatter.` },
+      { role: "user", content: question.slice(0, 300) },
+    ], { maxTokens: 3, timeoutMs: LLM_TIMEOUT_MESH_MS });
+    return /\byes\b/i.test(String(msg.content || ""));
+  } catch {
+    return false;
+  }
+}
+
+async function passesAmbientPrefilter(command, question, ctx) {
+  const q = String(question || "").trim();
+  if (q.length < 3) return false;
+  // Cheap greeting/acknowledgement reject before any inference.
+  if (/^(hi|hey+|hello|yo|sup|gm|gn|ty|thx|thanks|thank you|ok|okay|k|cool|nice|lol|lmao|\+1|👍|👋)[!.\s]*$/i.test(q)) return false;
+  // Per-source heuristic hooks: a true short-circuits, an all-false rejects.
+  const verdicts = [];
+  for (const id of command.sources) {
+    const source = knowledgeSources[id];
+    if (source && typeof source.matchesAmbient === "function") {
+      const v = source.matchesAmbient(question, ctx);
+      if (v === true) return true;
+      if (v === false) verdicts.push(false);
+    }
+  }
+  if (verdicts.length && verdicts.every((v) => v === false)) return false;
+  return ambientRelevanceClassifier(command, question);
+}
+
+// Entry point for an ambient (no-slash) channel message. Returns the reply text
+// to broadcast, or "" to stay silent.
+async function runAmbientChannelReply(sender, commandName, question, channelIndex) {
+  const command = getAgentCommand(commandName);
+  if (!command || !command.ambientCapable) return "";
+  const q = String(question || "").trim();
+  if (!q || q.startsWith("/")) return "";
+  if (!command.sources.some((id) => knowledgeSources[id]?.available())) return "";
+  if (ambientInFlight.has(channelIndex)) return "";
+  const now = Date.now();
+  if (now - (ambientCooldown.get(sender) || 0) < AMBIENT_SENDER_COOLDOWN_MS) return "";
+
+  ambientInFlight.add(channelIndex);
+  try {
+    const ctx = { now: new Date(), surface: "mesh" };
+    if (!(await passesAmbientPrefilter(command, q, ctx))) return "";
+    const reply = await runAgentQuestion(command, q, {
+      surface: "mesh",
+      peerId: sender,
+      replyTo: { isDirectMessage: false, channelIndex },
+      suppressFallback: true,
+    });
+    if (reply) ambientCooldown.set(sender, Date.now());
+    return reply || "";
+  } finally {
+    ambientInFlight.delete(channelIndex);
+  }
+}
+
+// Decide how a channel broadcast should be answered (or not) and return the
+// reply text. Used by both the inbound-mesh handler and the local-UI send path.
+async function computeChannelBroadcastReply(sender, rawText, channelIndex) {
+  const channelPrompt = stripChannelSenderPrefix(rawText);
+  const slash = parseLocalSlashCommand(channelPrompt);
+  if (slash) {
+    if (slash.agent) {
+      // Explicit knowledge command: only if bound to this channel.
+      if (!getChannelCommandBinding(channelIndex, slash.name)) return "";
+    } else if (!getCommandChannels().includes(channelIndex)) {
+      // Built-in system command: legacy global gate.
+      return "";
+    }
+    return generateMeshReply(sender, channelPrompt, {
+      replyTo: { isDirectMessage: false, channelIndex },
+    });
+  }
+  const ambientCommand = getAmbientCommandForChannel(channelIndex);
+  if (!ambientCommand) return "";
+  return runAmbientChannelReply(sender, ambientCommand, channelPrompt, channelIndex);
 }
 // ===== end agent commands ================================================
 
@@ -5497,21 +5661,17 @@ async function handleInboundMesh(payload) {
   });
 
   if (!isDirectMessage) {
-    // Channel broadcast: react only to known /commands, and only on channels the
-    // operator enabled for command listening (AI settings). The reply goes back
-    // to the channel, not as a DM. Free-form channel chatter is ignored.
-    const channelPrompt = stripChannelSenderPrefix(repairedText);
-    const channelCommand = parseLocalSlashCommand(channelPrompt);
-    if (channelCommand && getCommandChannels().includes(channelIndex)) {
-      const senderType = String(knownNodes[String(payload.sender || "")]?.contactType || "").toLowerCase();
-      if (senderType !== "room" && senderType !== "repeater") {
-        const reply = await generateMeshReply(payload.sender, channelPrompt, {
-          replyTo: { isDirectMessage: false, channelIndex },
-        });
-        if (reply) {
-          await sendMeshReply("^all", reply, "local-ai", { channelIndex, isDirectMessage: false });
-        }
-      }
+    // Channel broadcast. Explicit knowledge commands answer only on channels
+    // they are bound to; built-in commands use the legacy global gate; and a
+    // channel bound to an ambient command answers free-text questions there.
+    // Never react to infrastructure nodes (rooms relay, repeaters speak CLI).
+    const senderType = String(knownNodes[String(payload.sender || "")]?.contactType || "").toLowerCase();
+    if (senderType === "room" || senderType === "repeater") {
+      return;
+    }
+    const reply = await computeChannelBroadcastReply(payload.sender, repairedText, channelIndex);
+    if (reply) {
+      await sendMeshReply("^all", reply, "local-ai", { channelIndex, isDirectMessage: false });
     }
     return;
   }
@@ -6463,20 +6623,17 @@ const server = http.createServer(async (req, res) => {
       }
       const isDirectMessage = targetId !== "^all";
       await sendMeshReply(targetId, text, "local-ui", { channelIndex, isDirectMessage });
-      // If the operator broadcasts a known /command to a command-listening
-      // channel, the node answers it on the channel too (it never receives its
-      // own broadcast back). Fire-and-forget so the HTTP response returns now.
+      // If the operator broadcasts to a channel that is command- or ambient-
+      // enabled, the node answers on the channel too (it never receives its own
+      // broadcast back). Fire-and-forget so the HTTP response returns now.
       if (!isDirectMessage) {
-        const slash = parseLocalSlashCommand(text);
-        if (slash && getCommandChannels().includes(channelIndex)) {
-          generateMeshReply("local-ui", text, { replyTo: { isDirectMessage: false, channelIndex } })
-            .then((reply) => {
-              if (reply) {
-                return sendMeshReply("^all", reply, "local-ai", { channelIndex, isDirectMessage: false });
-              }
-            })
-            .catch(() => {});
-        }
+        computeChannelBroadcastReply("local-ui", text, channelIndex)
+          .then((reply) => {
+            if (reply) {
+              return sendMeshReply("^all", reply, "local-ai", { channelIndex, isDirectMessage: false });
+            }
+          })
+          .catch(() => {});
       }
       return sendJson(res, 200, { ok: true, destinationId: targetId, channelIndex, isDirectMessage });
     }

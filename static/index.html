@@ -427,7 +427,7 @@
             </div>
             <div class="modal-section modal-section-wide">
               <div class="modal-label">Command Channels</div>
-              <div class="device-status-text">Channels the node answers <code>/commands</code> on. Direct messages always work.</div>
+              <div class="device-status-text">Channels the node answers built-in <code>/commands</code> on (summary, battery, trace…). Direct messages always work. Knowledge commands are set per channel in Integrations.</div>
               <div id="aiSettingsCommandChannels" class="ai-settings-command-channels"></div>
             </div>
           </div>
@@ -439,6 +439,9 @@
                 <span class="ai-reply-label">Enabled</span>
                 <button id="integrationWikiToggle" type="button" class="ai-reply-btn" aria-pressed="false">off</button>
               </div>
+              <div class="modal-sublabel">Channels</div>
+              <div class="device-status-text">Per channel: <code>off</code>, <code>cmd</code> (explicit <code>/wiki</code> only), or <code>ambient</code> (answer every question).</div>
+              <div id="wikiChannelBindings" class="ai-settings-command-channels"></div>
             </div>
             <div class="modal-section modal-section-wide">
               <div class="modal-label">Pretalx</div>
@@ -448,6 +451,9 @@
                 <button id="integrationPretalxToggle" type="button" class="ai-reply-btn" aria-pressed="false">off</button>
               </div>
               <label class="ai-settings-field" for="integrationPretalxUrl"><span>Schedule.xml URL</span><input id="integrationPretalxUrl" type="url" placeholder="https://…/schedule.xml"></label>
+              <div class="modal-sublabel">Channels</div>
+              <div class="device-status-text">Per channel: <code>off</code>, <code>cmd</code> (explicit <code>/pretalx</code> only), or <code>ambient</code> (answer every question).</div>
+              <div id="pretalxChannelBindings" class="ai-settings-command-channels"></div>
             </div>
           </div>
         </div>
