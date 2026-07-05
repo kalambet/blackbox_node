@@ -104,6 +104,7 @@ Implemented or working components include:
 - aggregation of node telemetry and related data
 - core offline-first interaction logic
 - local AI scenarios without mandatory cloud usage
+- agent/knowledge commands (`/wiki`, time-aware `/pretalx`) bindable per channel as explicit commands or as **ambient** channels that answer every question from one source
 - an open repository and public-facing project direction
 
 Blackbox already demonstrates that off-grid value transfer and local services over mesh are not theoretical - they are part of a functioning stack.

@@ -25,6 +25,7 @@ It is designed for **off-grid communications**, **disaster response**, **field o
 - Run a local offline AI assistant on your own machine with `llama.cpp`
 - Turn a laptop plus MeshCore radio into a resilient **LoRa mesh node**
 - Keep chat, telemetry, and node awareness working during outages
+- Stand up a **knowledge channel** on the mesh — e.g. a `#schedule` channel where every message is answered from a live conference schedule, or `/wiki` for grounded offline facts
 - Get **end-to-end encrypted DMs with delivery confirmation** over radio
 - Move value off-grid with **Bitcoin** and **Cashu ecash**
 - Store everything locally in `./data/` with no accounts and no hosted backend
@@ -49,15 +50,17 @@ The original [blackbox_node](https://github.com/wadadawadada/blackbox_node) targ
 - Channel and contact sharing via `meshcore://` URIs with dependency-free **pixel QR** codes.
 - **Remote admin console**: log into repeater/room nodes and issue CLI commands over the mesh.
 
-### Agent commands (`/wiki`)
-- A pluggable **KnowledgeSource** + **AgentCommand** registry, with Wikipedia as the first source.
+### Agent commands & knowledge channels (`/wiki`, `/pretalx`)
+- A pluggable **KnowledgeSource** + **AgentCommand** registry. Wikipedia (`/wiki`) answers general questions; Pretalx (`/pretalx`) answers from a conference `schedule.xml` and is **time-aware** ("what's on now?", "next in room X?", "talks tomorrow").
 - Adaptive engine: a native tool-calling loop on capable models, falling back to a query→search→fetch→synthesize pipeline on small ones. Answers are grounded in the fetched sources and length-aware for mesh delivery.
+- **Per-channel binding — explicit vs ambient.** Each knowledge command can be bound to specific channels in one of two modes: **explicit** — the node reacts only to the typed `/command`, and only on channels where that command is enabled; or **ambient** — a channel is dedicated to one source and *every* message there is treated as a question (no slash needed), e.g. a `#schedule` channel that answers all schedule questions via Pretalx. Ambient replies run a relevance prefilter and stay silent on off-topic chatter, with airtime guards (one reply in flight per channel, a per-sender cooldown). Configured in **AI Settings → Integrations**.
 
 ### Remote / split inference (Tailscale)
 - Inference mode is configurable: the bundled local `llama-server`, or a **remote OpenAI-compatible endpoint** over [Tailscale](https://tailscale.com/) — so a thin Raspberry Pi field node can run the radio + dashboard and offload the LLM to a home machine. Live toggle in **SETUP → INFERENCE**, env-var overrides, and a graceful shutdown that reaps child processes for clean `pm2`/`systemd` restarts. See [Remote inference](#remote-inference-split-deployment).
 
 ### Mesh command routing
-- A direct message that begins with a **known command** (`/wiki`, `/weather`, …) is always routed to command processing; free-form DMs get an AI reply only when mesh AI reply is enabled, otherwise they are delivered as plain direct messages.
+- **Direct messages:** a DM that begins with a **known command** (`/wiki`, `/weather`, …) is always routed to command processing; free-form DMs get an AI reply only when mesh AI reply is enabled, otherwise they are delivered as plain direct messages.
+- **Channels:** built-in commands (`/summary`, `/battery`, …) answer on the channels enabled under **AI Settings → Integrations → Commands**; knowledge commands answer per their **explicit**/**ambient** binding; other channel chatter is ignored unless the channel is ambient-bound. Infrastructure nodes (rooms, repeaters) are never auto-answered.
 
 ---
 
@@ -95,6 +98,7 @@ When AI over mesh is enabled, any node can send a **slash command** as a direct 
 |---|---|
 | `/help` | List of all available commands |
 | `/wiki <question>` | Answer from Wikipedia via the local LLM (agent command — grounded, source-cited) |
+| `/pretalx <question>` | Answer from a conference schedule (frab/Pretalx `schedule.xml`) — time-aware, grounded (agent command) |
 | `/summary` | Node counts, network health, activity breakdown, temperature |
 | `/weather` | Latest environment readings from telemetry sensors |
 | `/activity` | Recent event counts (telemetry, messages, DMs) for the current window |
@@ -106,6 +110,8 @@ When AI over mesh is enabled, any node can send a **slash command** as a direct 
 | `send <amount> <node>` | Send Cashu sats to a node by its short name (requires wallet client auth) |
 
 Known commands are always processed when sent as a direct message, even with AI auto-reply off; a non-command DM is treated as a plain message (or answered by the AI when auto-reply is enabled).
+
+**Channels vs DMs.** Slash commands always work in a direct message. On group channels the node answers only where you enable it: built-in commands on the channels chosen under **AI Settings → Integrations → Commands**, and knowledge commands (`/wiki`, `/pretalx`) per their per-channel **explicit** or **ambient** binding. In an **ambient** channel every message is answered by the bound source without a slash — ideal for a dedicated `#schedule` (Pretalx) or `#wiki` channel — while a relevance prefilter keeps the node quiet on off-topic chatter.
 
 ### Communication and telemetry
 
@@ -365,7 +371,7 @@ On launch:
 - Mesh-triggered queries with `@bot ...` and `!ask ...`
 - `!reset` clears per-peer conversation context
 - Slash commands over mesh DM: `/help`, `/summary`, `/weather`, `/activity`, `/battery`, `/nodecheck`, `/trace`, `/advert`
-- **Agent commands** (`/wiki`): pluggable knowledge sources with an adaptive tool-call / pipeline engine, grounded and source-cited
+- **Agent commands** (`/wiki`, `/pretalx`): pluggable knowledge sources with an adaptive tool-call / pipeline engine, grounded and source-cited; time-aware conference-schedule source; bindable per channel in **explicit** or **ambient** mode (a dedicated channel answers every message from one source)
 - Configurable system prompt, temperature, top-p, and token limits per mode
 - Built-in model manager for curated GGUF downloads (disabled in remote-inference mode — the host owns the model)
 
@@ -397,6 +403,7 @@ On launch:
 **UI and storage**
 
 - Local web UI for message log, contact list, map, local chat, wallet, and settings
+- **AI Settings** as a retro drill-down (General / Integrations → Commands · Wiki · Pretalx) matching the SETUP console, with per-channel command bindings
 - All data stored locally in `./data/`
 - No external database, no accounts, no telemetry
 
