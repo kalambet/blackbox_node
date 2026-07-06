@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-06
+
 ### Added
 
 - **Explicit vs ambient per-channel knowledge commands.** Knowledge commands
@@ -39,3 +41,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Pretalx announcements now render as a single line with inline separators; the mesh
   transport collapses newlines to spaces, which previously flattened the multi-line
   format into a run-on string.
+
+[Unreleased]: https://github.com/kalambet/blackbox_node/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/kalambet/blackbox_node/releases/tag/v0.2.0
