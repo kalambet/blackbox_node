@@ -37,6 +37,7 @@ const TEST_CASHU_FILE = path.join(DATA_DIR, "test_cashu.json");
 const TEST_CASHU_DEFAULT_MINT = "https://cashu.mutinynet.com";
 const MUTINYNET_FAUCET_URL = "https://faucet.mutinynet.com";
 const SWAPS_FILE = path.join(DATA_DIR, "swaps.json");
+const PRETALX_ANNOUNCE_FILE = path.join(DATA_DIR, "pretalx-announce.json");
 const PYDEPS_DIR = path.join(__dirname, "pydeps");
 const LLAMA_DIR = path.join(__dirname, "llama");
 const LLAMA_EXE = (() => {
@@ -2785,6 +2786,10 @@ function getKnowledgeSettings() {
     pretalx: {
       enabled: pretalx.enabled === true, // default OFF until a URL is set
       url: String(pretalx.url || ""),
+      announce: {
+        enabled: pretalx.announce?.enabled === true, // default OFF
+        leadMinutes: clampInteger(pretalx.announce?.leadMinutes, 1, 120, 5),
+      },
     },
   };
 }
@@ -2800,18 +2805,27 @@ function updateKnowledgeSettings(next) {
     url = "";
   }
   const prevUrl = String(appSettings.knowledge?.pretalx?.url || appSettings.knowledge?.pretix?.url || "");
+  const announce = pretalx.announce && typeof pretalx.announce === "object" ? pretalx.announce : {};
   appSettings.knowledge = {
     ...(appSettings.knowledge || {}),
     wikipedia: {
       ...(appSettings.knowledge?.wikipedia || {}),
       enabled: wiki.enabled !== false,
     },
-    pretalx: { enabled: pretalx.enabled === true, url },
+    pretalx: {
+      enabled: pretalx.enabled === true,
+      url,
+      announce: {
+        enabled: announce.enabled === true,
+        leadMinutes: clampInteger(announce.leadMinutes, 1, 120, 5),
+      },
+    },
   };
   delete appSettings.knowledge.pretix; // drop the old key name if it lingers
   persistSettings();
   if (url !== prevUrl) {
     invalidateScheduleCache();
+    resetPretalxAnnounceState(url);
   }
   return getKnowledgeSettings();
 }
@@ -2850,6 +2864,36 @@ async function fetchJsonWithTimeout(url, timeoutMs = AGENT_SOURCE_TIMEOUT_MS) {
 const SCHEDULE_MAX_BYTES = 2_000_000; // guard against a huge schedule.xml
 const SCHEDULE_CACHE_TTL_MS = 10 * 60 * 1000;
 let scheduleCache = { url: "", fetchedAt: 0, events: [] };
+
+// Pre-event announcer dedup state: which schedule entries have already been
+// announced. Persisted so a restart near an event never re-announces it.
+// { url: "<schedule url>", announced: { "<guid>": <startMs> } }
+let pretalxAnnounceState = { url: "", announced: {} };
+
+function loadPretalxAnnounceState() {
+  try {
+    const raw = JSON.parse(fs.readFileSync(PRETALX_ANNOUNCE_FILE, "utf8"));
+    pretalxAnnounceState = {
+      url: String(raw?.url || ""),
+      announced: raw && typeof raw.announced === "object" && raw.announced ? raw.announced : {},
+    };
+  } catch {
+    pretalxAnnounceState = { url: "", announced: {} };
+  }
+}
+
+function persistPretalxAnnounceState() {
+  try {
+    fs.writeFileSync(PRETALX_ANNOUNCE_FILE, JSON.stringify(pretalxAnnounceState, null, 2), "utf8");
+  } catch {}
+}
+
+// Forget announced entries (called when the schedule URL changes so a new
+// conference starts clean).
+function resetPretalxAnnounceState(url = "") {
+  pretalxAnnounceState = { url: String(url || ""), announced: {} };
+  persistPretalxAnnounceState();
+}
 
 function invalidateScheduleCache() {
   scheduleCache = { url: "", fetchedAt: 0, events: [] };
@@ -3049,6 +3093,116 @@ function findScheduleEvent(events, ref) {
     events.find((e) => textMatch(e.title, key)) ||
     null
   );
+}
+
+// ---- Pre-event announcer ----------------------------------------------------
+// Broadcasts a one-off "starting soon" message to the channel(s) Pretalx is
+// bound to, `leadMinutes` before each session begins. Pretalx-specific; runs
+// regardless of the binding mode (ambient or command).
+const PRETALX_ANNOUNCE_TICK_MS = 30_000;
+const PRETALX_ANNOUNCE_PRUNE_MS = 12 * 60 * 60 * 1000; // forget entries 12h past start
+const WEEKDAY_ABBR = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+let pretalxAnnounceInterval = null;
+let pretalxAnnounceTickBusy = false;
+
+// Channels a knowledge command is bound to (any mode).
+function getChannelsForCommand(commandName) {
+  const name = String(commandName || "").replace(/^\//, "").toLowerCase();
+  return getChannelCommands().filter((b) => b.command === name).map((b) => b.channel);
+}
+
+// Compact mesh announcement: "📅 <time> · <room> / <title> / — <speakers>".
+// A weekday prefix is added only when the session is not on the current day.
+function formatEventAnnouncement(ev, nowMs) {
+  const local = new Date((ev.startMs || 0) + ev.tzOffsetMin * 60000);
+  const todayConf = confLocalDate(nowMs, ev.tzOffsetMin);
+  const dayPrefix = ev.dayDate && ev.dayDate !== todayConf ? `${WEEKDAY_ABBR[local.getUTCDay()]} ` : "";
+  const timeLabel = `${dayPrefix}${ev.startLabel}`.trim();
+  const head = ev.room ? `📅 ${timeLabel} · ${ev.room}` : `📅 ${timeLabel}`;
+  const lines = [head, String(ev.title || "untitled").slice(0, 90)];
+  if (ev.persons.length) {
+    const shown = ev.persons.slice(0, 2).join(", ");
+    const extra = ev.persons.length - 2;
+    lines.push(`— ${shown}${extra > 0 ? ` +${extra}` : ""}`);
+  }
+  return lines.join("\n");
+}
+
+async function runPretalxAnnouncerTick() {
+  if (pretalxAnnounceTickBusy) return;
+  const { enabled, url, announce } = getKnowledgeSettings().pretalx;
+  if (!enabled || !url || !announce.enabled) return;
+  const channels = getChannelsForCommand("pretalx");
+  if (!channels.length) return;
+
+  pretalxAnnounceTickBusy = true;
+  try {
+    const events = await ensureSchedule();
+    if (!events.length) return;
+    const now = Date.now();
+    const lead = announce.leadMinutes * 60000;
+    let changed = false;
+
+    for (const ev of events) {
+      if (ev.startMs == null) continue;
+      const key = ev.guid || ev.id;
+      if (!key || pretalxAnnounceState.announced[key]) continue;
+      // Fire only inside [start - lead, start): never re-announce, never
+      // backfill past/started sessions, announce once if enabled mid-window.
+      if (!(now >= ev.startMs - lead && now < ev.startMs)) continue;
+
+      const text = formatEventAnnouncement(ev, now);
+      let sentAny = false;
+      for (const channelIndex of channels) {
+        try {
+          await sendMeshReply("^all", text, "local-ai", { channelIndex, isDirectMessage: false });
+          sentAny = true;
+        } catch (error) {
+          // Bridge down / send failed: leave the entry unmarked so a later tick
+          // retries while the session is still within its lead window.
+          addMessage({
+            direction: "system", sender: "agent", recipient: "-",
+            text: `pretalx announce FAILED ch=${channelIndex} "${ev.title}": ${error.message}`,
+            transport: "agent",
+          });
+        }
+      }
+      if (sentAny) {
+        pretalxAnnounceState.announced[key] = ev.startMs;
+        changed = true;
+        addMessage({
+          direction: "system", sender: "agent", recipient: "-",
+          text: `pretalx announce -> ch[${channels.join(",")}] "${ev.title}" @ ${ev.startLabel}`,
+          transport: "agent",
+        });
+      }
+    }
+
+    // Prune entries whose sessions started well in the past.
+    for (const [key, startMs] of Object.entries(pretalxAnnounceState.announced)) {
+      if (Number(startMs) < now - PRETALX_ANNOUNCE_PRUNE_MS) {
+        delete pretalxAnnounceState.announced[key];
+        changed = true;
+      }
+    }
+    if (pretalxAnnounceState.url !== url) {
+      pretalxAnnounceState.url = url;
+      changed = true;
+    }
+    if (changed) persistPretalxAnnounceState();
+  } catch {
+    // A tick must never throw out of the interval.
+  } finally {
+    pretalxAnnounceTickBusy = false;
+  }
+}
+
+function startPretalxAnnouncer() {
+  loadPretalxAnnounceState();
+  if (pretalxAnnounceInterval) clearInterval(pretalxAnnounceInterval);
+  pretalxAnnounceInterval = setInterval(() => {
+    runPretalxAnnouncerTick().catch(() => {});
+  }, PRETALX_ANNOUNCE_TICK_MS);
 }
 
 // Tool defs the model sees for the pretalx source (schedule-native, time-aware).
@@ -7163,6 +7317,7 @@ server.listen(PORT, HOST, () => {
   startBridge();
   openBrowser();
   startSwapPolling();
+  startPretalxAnnouncer();
 });
 
 // Graceful shutdown: a bare SIGTERM/SIGINT leaves the spawned llama-server and
@@ -7173,6 +7328,7 @@ function shutdown(signal) {
   if (shuttingDown) return;
   shuttingDown = true;
   console.log(`Received ${signal}, shutting down...`);
+  try { if (pretalxAnnounceInterval) clearInterval(pretalxAnnounceInterval); } catch {}
   try { stopLlamaServer(); } catch {}
   try { stopBridge(); } catch {}
   server.close(() => process.exit(0));

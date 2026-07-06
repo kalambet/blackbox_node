@@ -496,6 +496,13 @@
                 <button id="integrationPretalxToggle" type="button" class="ai-reply-btn" aria-pressed="false">off</button>
               </div>
               <label class="ai-settings-field" for="integrationPretalxUrl"><span>Schedule.xml URL</span><input id="integrationPretalxUrl" type="url" placeholder="https://…/schedule.xml"></label>
+              <div class="modal-sublabel">Announcements</div>
+              <div class="device-status-text">Broadcast each session (time, room, title, speakers) to the channel(s) Pretalx is enabled on, this many minutes before it starts. Bind Pretalx to a channel below to choose where.</div>
+              <div class="ai-reply-row ai-reply-row--settings">
+                <span class="ai-reply-label">Enabled</span>
+                <button id="integrationPretalxAnnounceToggle" type="button" class="ai-reply-btn" aria-pressed="false">off</button>
+              </div>
+              <label class="ai-settings-field" for="integrationPretalxAnnounceLead"><span>Lead time (min)</span><input id="integrationPretalxAnnounceLead" type="number" min="1" max="120" step="1"></label>
               <div class="modal-sublabel">Channels</div>
               <div class="device-status-text">Per channel: <code>off</code>, <code>cmd</code> (explicit <code>/pretalx</code> only), or <code>ambient</code> (answer every question).</div>
               <div id="pretalxChannelBindings" class="ai-settings-command-channels"></div>

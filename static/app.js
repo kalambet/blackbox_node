@@ -91,6 +91,8 @@ let channelCommandsLoaded = [];
 const integrationWikiToggle = document.getElementById("integrationWikiToggle");
 const integrationPretalxToggle = document.getElementById("integrationPretalxToggle");
 const integrationPretalxUrl = document.getElementById("integrationPretalxUrl");
+const integrationPretalxAnnounceToggle = document.getElementById("integrationPretalxAnnounceToggle");
+const integrationPretalxAnnounceLead = document.getElementById("integrationPretalxAnnounceLead");
 const aiNavBack = document.getElementById("aiNavBack");
 const aiNavCrumb = document.getElementById("aiNavCrumb");
 const helpModal = document.getElementById("helpModal");
@@ -2097,6 +2099,8 @@ function renderAiSettings(payload) {
   if (integrationWikiToggle) setAiSettingsToggle(integrationWikiToggle, integrations.wikipedia?.enabled !== false);
   if (integrationPretalxToggle) setAiSettingsToggle(integrationPretalxToggle, integrations.pretalx?.enabled === true);
   if (integrationPretalxUrl) integrationPretalxUrl.value = integrations.pretalx?.url || "";
+  if (integrationPretalxAnnounceToggle) setAiSettingsToggle(integrationPretalxAnnounceToggle, integrations.pretalx?.announce?.enabled === true);
+  if (integrationPretalxAnnounceLead) integrationPretalxAnnounceLead.value = integrations.pretalx?.announce?.leadMinutes ?? 5;
   toggleAiInstructionsInput();
 }
 
@@ -2180,6 +2184,10 @@ function collectIntegrationsForm() {
     pretalx: {
       enabled: integrationPretalxToggle?.getAttribute("aria-pressed") === "true",
       url: (integrationPretalxUrl?.value || "").trim(),
+      announce: {
+        enabled: integrationPretalxAnnounceToggle?.getAttribute("aria-pressed") === "true",
+        leadMinutes: Number(integrationPretalxAnnounceLead?.value) || 5,
+      },
     },
   };
 }
@@ -6077,7 +6085,7 @@ aiSettingsUseTelemetry.addEventListener("click", () => {
   const next = aiSettingsUseTelemetry.getAttribute("aria-pressed") !== "true";
   setAiSettingsToggle(aiSettingsUseTelemetry, next);
 });
-[integrationWikiToggle, integrationPretalxToggle].forEach((toggle) => {
+[integrationWikiToggle, integrationPretalxToggle, integrationPretalxAnnounceToggle].forEach((toggle) => {
   if (!toggle) return;
   toggle.addEventListener("click", () => {
     setAiSettingsToggle(toggle, toggle.getAttribute("aria-pressed") !== "true");
