@@ -3111,21 +3111,24 @@ function getChannelsForCommand(commandName) {
   return getChannelCommands().filter((b) => b.command === name).map((b) => b.channel);
 }
 
-// Compact mesh announcement: "📅 <time> · <room> / <title> / — <speakers>".
-// A weekday prefix is added only when the session is not on the current day.
+// Compact single-line mesh announcement: "📅 <time> · <room> — <title> (<speakers>)".
+// The mesh transport collapses newlines to spaces (buildMeshPackets), so inline
+// separators are used instead of line breaks. A weekday prefix is added only when
+// the session is not on the current conference-local day.
 function formatEventAnnouncement(ev, nowMs) {
   const local = new Date((ev.startMs || 0) + ev.tzOffsetMin * 60000);
   const todayConf = confLocalDate(nowMs, ev.tzOffsetMin);
   const dayPrefix = ev.dayDate && ev.dayDate !== todayConf ? `${WEEKDAY_ABBR[local.getUTCDay()]} ` : "";
   const timeLabel = `${dayPrefix}${ev.startLabel}`.trim();
-  const head = ev.room ? `📅 ${timeLabel} · ${ev.room}` : `📅 ${timeLabel}`;
-  const lines = [head, String(ev.title || "untitled").slice(0, 90)];
+  let out = `📅 ${timeLabel}`;
+  if (ev.room) out += ` · ${ev.room}`;
+  out += ` — ${String(ev.title || "untitled").slice(0, 90)}`;
   if (ev.persons.length) {
     const shown = ev.persons.slice(0, 2).join(", ");
     const extra = ev.persons.length - 2;
-    lines.push(`— ${shown}${extra > 0 ? ` +${extra}` : ""}`);
+    out += ` (${shown}${extra > 0 ? ` +${extra}` : ""})`;
   }
-  return lines.join("\n");
+  return out;
 }
 
 async function runPretalxAnnouncerTick() {
