@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Pretalx announcer batches all sessions that share a start time into a single
+  message — `📅 10:00 · N talks · Room X — … · Room Y — … · +N more` — instead of
+  one broadcast per talk. The message is bounded by a byte budget, so a crowded
+  slot (many parallel tracks) is summarised as "+N more" rather than flooding the
+  channel with dozens of packets.
+
 ## [0.2.0] - 2026-07-06
 
 ### Added

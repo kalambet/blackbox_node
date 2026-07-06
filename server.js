@@ -3101,6 +3101,10 @@ function findScheduleEvent(events, ref) {
 // regardless of the binding mode (ambient or command).
 const PRETALX_ANNOUNCE_TICK_MS = 30_000;
 const PRETALX_ANNOUNCE_PRUNE_MS = 12 * 60 * 60 * 1000; // forget entries 12h past start
+// Byte budget for a batched announcement so a slot with many parallel tracks can't
+// explode into dozens of mesh packets. ~260 bytes ≈ 2-3 packets; overflow sessions
+// are summarised as "+N more".
+const PRETALX_ANNOUNCE_MAX_BYTES = 260;
 const WEEKDAY_ABBR = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 let pretalxAnnounceInterval = null;
 let pretalxAnnounceTickBusy = false;
@@ -3111,24 +3115,47 @@ function getChannelsForCommand(commandName) {
   return getChannelCommands().filter((b) => b.command === name).map((b) => b.channel);
 }
 
-// Compact single-line mesh announcement: "📅 <time> · <room> — <title> (<speakers>)".
-// The mesh transport collapses newlines to spaces (buildMeshPackets), so inline
-// separators are used instead of line breaks. A weekday prefix is added only when
-// the session is not on the current conference-local day.
-function formatEventAnnouncement(ev, nowMs) {
-  const local = new Date((ev.startMs || 0) + ev.tzOffsetMin * 60000);
-  const todayConf = confLocalDate(nowMs, ev.tzOffsetMin);
-  const dayPrefix = ev.dayDate && ev.dayDate !== todayConf ? `${WEEKDAY_ABBR[local.getUTCDay()]} ` : "";
-  const timeLabel = `${dayPrefix}${ev.startLabel}`.trim();
-  let out = `📅 ${timeLabel}`;
-  if (ev.room) out += ` · ${ev.room}`;
-  out += ` — ${String(ev.title || "untitled").slice(0, 90)}`;
-  if (ev.persons.length) {
+// One session rendered inline: "<room> — <title> (<speakers>)". Speakers are
+// dropped in batched announcements to fit more sessions in the byte budget.
+function formatSessionEntry(ev, withSpeakers) {
+  const title = String(ev.title || "untitled").slice(0, 80);
+  let entry = ev.room ? `${String(ev.room).slice(0, 32)} — ${title}` : title;
+  if (withSpeakers && ev.persons.length) {
     const shown = ev.persons.slice(0, 2).join(", ");
     const extra = ev.persons.length - 2;
-    out += ` (${shown}${extra > 0 ? ` +${extra}` : ""})`;
+    entry += ` (${shown}${extra > 0 ? ` +${extra}` : ""})`;
   }
-  return out;
+  return entry;
+}
+
+// One message per start time. A lone session keeps full detail (with speakers);
+// several sessions at the same time are batched into a single message headed by
+// the count — "📅 10:00 · 12 talks · Room X — … · Room Y — … · +N more" — bounded
+// by PRETALX_ANNOUNCE_MAX_BYTES so a crowded slot never floods the channel. The
+// mesh transport collapses newlines to spaces, so inline separators are used.
+function formatEventGroupAnnouncement(group, nowMs) {
+  const first = group[0];
+  const local = new Date((first.startMs || 0) + first.tzOffsetMin * 60000);
+  const todayConf = confLocalDate(nowMs, first.tzOffsetMin);
+  const dayPrefix = first.dayDate && first.dayDate !== todayConf ? `${WEEKDAY_ABBR[local.getUTCDay()]} ` : "";
+  const timeLabel = `${dayPrefix}${first.startLabel}`.trim();
+
+  if (group.length === 1) {
+    return `📅 ${timeLabel} · ${formatSessionEntry(first, true)}`;
+  }
+
+  let msg = `📅 ${timeLabel} · ${group.length} talks`;
+  let shown = 0;
+  for (const ev of group) {
+    const seg = ` · ${formatSessionEntry(ev, false)}`;
+    // Always include at least one session; then respect the byte budget.
+    if (shown >= 1 && Buffer.byteLength(msg + seg, "utf8") > PRETALX_ANNOUNCE_MAX_BYTES) break;
+    msg += seg;
+    shown += 1;
+  }
+  const remaining = group.length - shown;
+  if (remaining > 0) msg += ` · +${remaining} more`;
+  return msg;
 }
 
 async function runPretalxAnnouncerTick() {
@@ -3146,6 +3173,9 @@ async function runPretalxAnnouncerTick() {
     const lead = announce.leadMinutes * 60000;
     let changed = false;
 
+    // Gather qualifying (in-window, not-yet-announced) sessions, grouped by start
+    // time so all talks starting together go out as one batched message.
+    const groups = new Map(); // startMs -> events[]
     for (const ev of events) {
       if (ev.startMs == null) continue;
       const key = ev.guid || ev.id;
@@ -3153,29 +3183,33 @@ async function runPretalxAnnouncerTick() {
       // Fire only inside [start - lead, start): never re-announce, never
       // backfill past/started sessions, announce once if enabled mid-window.
       if (!(now >= ev.startMs - lead && now < ev.startMs)) continue;
+      if (!groups.has(ev.startMs)) groups.set(ev.startMs, []);
+      groups.get(ev.startMs).push(ev);
+    }
 
-      const text = formatEventAnnouncement(ev, now);
+    for (const group of groups.values()) {
+      const text = formatEventGroupAnnouncement(group, now);
       let sentAny = false;
       for (const channelIndex of channels) {
         try {
           await sendMeshReply("^all", text, "local-ai", { channelIndex, isDirectMessage: false });
           sentAny = true;
         } catch (error) {
-          // Bridge down / send failed: leave the entry unmarked so a later tick
-          // retries while the session is still within its lead window.
+          // Bridge down / send failed: leave the group unmarked so a later tick
+          // retries while the sessions are still within their lead window.
           addMessage({
             direction: "system", sender: "agent", recipient: "-",
-            text: `pretalx announce FAILED ch=${channelIndex} "${ev.title}": ${error.message}`,
+            text: `pretalx announce FAILED ch=${channelIndex} (${group.length} session(s) @ ${group[0].startLabel}): ${error.message}`,
             transport: "agent",
           });
         }
       }
       if (sentAny) {
-        pretalxAnnounceState.announced[key] = ev.startMs;
+        for (const ev of group) pretalxAnnounceState.announced[ev.guid || ev.id] = ev.startMs;
         changed = true;
         addMessage({
           direction: "system", sender: "agent", recipient: "-",
-          text: `pretalx announce -> ch[${channels.join(",")}] "${ev.title}" @ ${ev.startLabel}`,
+          text: `pretalx announce -> ch[${channels.join(",")}] ${group.length} session(s) @ ${group[0].startLabel}`,
           transport: "agent",
         });
       }
