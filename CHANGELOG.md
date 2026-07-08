@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Configurable Pretalx schedule refresh interval (`knowledge.pretalx.refreshMinutes`,
+  default 10, in AI Settings → Integrations → Pretalx). Lower it near a live event so
+  schedule changes propagate quickly; the cache TTL was previously a fixed 10 minutes.
+
+### Fixed
+
+- Pretalx announcements now reflect **rescheduled** sessions. Dedup keyed on the event
+  GUID alone meant a talk moved to a new time (e.g. opening 19:15 → 19:45) was never
+  re-announced; dedup now tracks GUID + start time, so a corrected announcement goes
+  out when a session's start changes.
+
 ### Changed
 
 - Pretalx announcer batches all sessions that share a start time into a single

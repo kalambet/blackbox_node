@@ -91,6 +91,7 @@ let channelCommandsLoaded = [];
 const integrationWikiToggle = document.getElementById("integrationWikiToggle");
 const integrationPretalxToggle = document.getElementById("integrationPretalxToggle");
 const integrationPretalxUrl = document.getElementById("integrationPretalxUrl");
+const integrationPretalxRefresh = document.getElementById("integrationPretalxRefresh");
 const integrationPretalxAnnounceToggle = document.getElementById("integrationPretalxAnnounceToggle");
 const integrationPretalxAnnounceLead = document.getElementById("integrationPretalxAnnounceLead");
 const aiNavBack = document.getElementById("aiNavBack");
@@ -2099,6 +2100,7 @@ function renderAiSettings(payload) {
   if (integrationWikiToggle) setAiSettingsToggle(integrationWikiToggle, integrations.wikipedia?.enabled !== false);
   if (integrationPretalxToggle) setAiSettingsToggle(integrationPretalxToggle, integrations.pretalx?.enabled === true);
   if (integrationPretalxUrl) integrationPretalxUrl.value = integrations.pretalx?.url || "";
+  if (integrationPretalxRefresh) integrationPretalxRefresh.value = integrations.pretalx?.refreshMinutes ?? 10;
   if (integrationPretalxAnnounceToggle) setAiSettingsToggle(integrationPretalxAnnounceToggle, integrations.pretalx?.announce?.enabled === true);
   if (integrationPretalxAnnounceLead) integrationPretalxAnnounceLead.value = integrations.pretalx?.announce?.leadMinutes ?? 5;
   toggleAiInstructionsInput();
@@ -2184,6 +2186,7 @@ function collectIntegrationsForm() {
     pretalx: {
       enabled: integrationPretalxToggle?.getAttribute("aria-pressed") === "true",
       url: (integrationPretalxUrl?.value || "").trim(),
+      refreshMinutes: Number(integrationPretalxRefresh?.value) || 10,
       announce: {
         enabled: integrationPretalxAnnounceToggle?.getAttribute("aria-pressed") === "true",
         leadMinutes: Number(integrationPretalxAnnounceLead?.value) || 5,

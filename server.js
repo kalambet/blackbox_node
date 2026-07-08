@@ -2786,6 +2786,7 @@ function getKnowledgeSettings() {
     pretalx: {
       enabled: pretalx.enabled === true, // default OFF until a URL is set
       url: String(pretalx.url || ""),
+      refreshMinutes: clampInteger(pretalx.refreshMinutes, 1, 120, 10), // schedule cache TTL
       announce: {
         enabled: pretalx.announce?.enabled === true, // default OFF
         leadMinutes: clampInteger(pretalx.announce?.leadMinutes, 1, 120, 5),
@@ -2815,6 +2816,7 @@ function updateKnowledgeSettings(next) {
     pretalx: {
       enabled: pretalx.enabled === true,
       url,
+      refreshMinutes: clampInteger(pretalx.refreshMinutes, 1, 120, 10),
       announce: {
         enabled: announce.enabled === true,
         leadMinutes: clampInteger(announce.leadMinutes, 1, 120, 5),
@@ -2862,7 +2864,7 @@ async function fetchJsonWithTimeout(url, timeoutMs = AGENT_SOURCE_TIMEOUT_MS) {
 
 // ---- Conference schedule (frab/pentabarf schedule.xml) ----------------------
 const SCHEDULE_MAX_BYTES = 2_000_000; // guard against a huge schedule.xml
-const SCHEDULE_CACHE_TTL_MS = 10 * 60 * 1000;
+// Cache TTL is operator-configurable (knowledge.pretalx.refreshMinutes, default 10).
 let scheduleCache = { url: "", fetchedAt: 0, events: [] };
 
 // Pre-event announcer dedup state: which schedule entries have already been
@@ -2991,12 +2993,13 @@ function parseFrabSchedule(xml) {
 }
 
 async function ensureSchedule() {
-  const { enabled, url } = getKnowledgeSettings().pretalx;
+  const { enabled, url, refreshMinutes } = getKnowledgeSettings().pretalx;
   if (!enabled || !url) return [];
+  const ttlMs = clampInteger(refreshMinutes, 1, 120, 10) * 60 * 1000;
   const fresh =
     scheduleCache.url === url &&
     scheduleCache.events.length &&
-    Date.now() - scheduleCache.fetchedAt < SCHEDULE_CACHE_TTL_MS;
+    Date.now() - scheduleCache.fetchedAt < ttlMs;
   if (fresh) return scheduleCache.events;
   try {
     const xml = await fetchTextWithTimeout(url);
@@ -3179,9 +3182,13 @@ async function runPretalxAnnouncerTick() {
     for (const ev of events) {
       if (ev.startMs == null) continue;
       const key = ev.guid || ev.id;
-      if (!key || pretalxAnnounceState.announced[key]) continue;
-      // Fire only inside [start - lead, start): never re-announce, never
-      // backfill past/started sessions, announce once if enabled mid-window.
+      if (!key) continue;
+      // Dedup on (guid + start time): a session already announced at its current
+      // start time is skipped, but a rescheduled session (same guid, new start)
+      // is announced again so the channel gets the corrected time.
+      if (pretalxAnnounceState.announced[key] === ev.startMs) continue;
+      // Fire only inside [start - lead, start): never backfill past/started
+      // sessions; announce once when the (possibly new) start enters the window.
       if (!(now >= ev.startMs - lead && now < ev.startMs)) continue;
       if (!groups.has(ev.startMs)) groups.set(ev.startMs, []);
       groups.get(ev.startMs).push(ev);

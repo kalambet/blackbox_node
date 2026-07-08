@@ -496,6 +496,8 @@
                 <button id="integrationPretalxToggle" type="button" class="ai-reply-btn" aria-pressed="false">off</button>
               </div>
               <label class="ai-settings-field" for="integrationPretalxUrl"><span>Schedule.xml URL</span><input id="integrationPretalxUrl" type="url" placeholder="https://…/schedule.xml"></label>
+              <label class="ai-settings-field" for="integrationPretalxRefresh"><span>Refresh (min)</span><input id="integrationPretalxRefresh" type="number" min="1" max="120" step="1"></label>
+              <div class="device-status-text">How often the schedule.xml is re-fetched. Lower it near a live event so time changes propagate quickly.</div>
               <div class="modal-sublabel">Announcements</div>
               <div class="device-status-text">Broadcast each session (time, room, title, speakers) to the channel(s) Pretalx is enabled on, this many minutes before it starts. Bind Pretalx to a channel below to choose where.</div>
               <div class="ai-reply-row ai-reply-row--settings">
