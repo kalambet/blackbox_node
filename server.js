@@ -3748,6 +3748,14 @@ async function runAgentCommand(command, slashCommand, opts = {}) {
 // the ambient path passes the whole channel message). When suppressFallback is
 // set (ambient mode) an empty/failed answer returns "" so the caller stays
 // silent instead of broadcasting a "no results" reply over the radio.
+// True when an error means the model backend was unreachable (network / DNS /
+// timeout / 5xx) rather than a normal "no results" outcome — used to decide
+// whether to surface an "AI offline" notice instead of staying silent.
+function isLlmUnreachableError(message) {
+  const m = String(message || "");
+  return /LLM timeout|timed? ?out|fetch failed|network|unreachable|socket hang up|ECONNREFUSED|ECONNRESET|ENOTFOUND|EAI_AGAIN|ETIMEDOUT|LLM HTTP 5\d\d/i.test(m);
+}
+
 async function runAgentQuestion(command, rawQuestion, { surface = "local", peerId = null, replyTo = null, suppressFallback = false } = {}) {
   const question = String(rawQuestion || "").trim();
   if (!question) {
@@ -3772,12 +3780,15 @@ async function runAgentQuestion(command, rawQuestion, { surface = "local", peerI
   const ctx = { now: new Date(), surface };
   let answer = "";
   let failure = "";
+  let toolFailure = ""; // tool-loop error, kept so an unreachable LLM here isn't
+                        // masked when the pipeline fallback throws "no results".
   try {
     const cached = agentToolModeCache.get(currentModelName);
     if (cached !== false) {
       try {
         answer = await runAgentToolLoop(command, question, surface, deadline, collected, ctx);
       } catch (toolError) {
+        toolFailure = toolError.message;
         collected.mode = `pipeline (tool mode: ${toolError.message})`;
         answer = await runAgentPipeline(command, question, surface, deadline, collected, ctx);
       }
@@ -3799,6 +3810,13 @@ async function runAgentQuestion(command, rawQuestion, { surface = "local", peerI
   });
   if (answer) {
     return surface === "mesh" ? sanitizeMeshReply(answer) : answer;
+  }
+  // Distinguish "couldn't reach the model" from "searched and found nothing":
+  // surface a short offline notice even in ambient mode (which is otherwise
+  // silent) so a channel question isn't met with dead air during an outage, and
+  // so the explicit path doesn't claim "no matches" when the LLM was unreachable.
+  if (isLlmUnreachableError(failure) || isLlmUnreachableError(toolFailure)) {
+    return "The bot is quite busy and can't answer your question right now.";
   }
   return suppressFallback ? "" : command.fallback(collected.results);
 }

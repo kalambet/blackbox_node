@@ -19,6 +19,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   GUID alone meant a talk moved to a new time (e.g. opening 19:15 → 19:45) was never
   re-announced; dedup now tracks GUID + start time, so a corrected announcement goes
   out when a session's start changes.
+- Agent commands now reply with a brief **"the bot is quite busy"** notice when the
+  model backend is unreachable (network/DNS/timeout/5xx) instead of failing silently —
+  an ambient channel question during an inference or internet outage previously produced
+  dead air (and the explicit path misleadingly claimed "no matches"). The unreachable
+  signal is detected even when the tool-mode error is masked by the pipeline fallback.
 
 ### Changed
 
