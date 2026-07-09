@@ -3428,7 +3428,7 @@ const knowledgeSources = {
     // otherwise defer (null) to the shared yes/no classifier.
     matchesAmbient(question) {
       const q = String(question || "").toLowerCase();
-      if (/\b(now|next|today|tonight|tomorrow|schedule|sessions?|talks?|speakers?|room|rooms|track|tracks|keynote|workshop|agenda|programme?|happening|line ?up|lineup|when'?s|what'?s on)\b/.test(q)) return true;
+      if (/\b(now|next|later|today|tonight|tomorrow|morning|afternoon|evening|lunch|schedule|agenda|program(?:me)?|sessions?|talks?|speakers?|keynotes?|workshops?|panels?|rooms?|tracks?|stage|hall|booth|exhibits?|opening|closing|break|happening|line ?up|lineup|when'?s|what'?s on|going on)\b/.test(q)) return true;
       if (/\b\d{1,2}:\d{2}\b/.test(q)) return true;
       return null;
     },
@@ -3818,7 +3818,11 @@ async function runAgentQuestion(command, rawQuestion, { surface = "local", peerI
   if (isLlmUnreachableError(failure) || isLlmUnreachableError(toolFailure)) {
     return "The bot is quite busy and can't answer your question right now.";
   }
-  return suppressFallback ? "" : command.fallback(collected.results);
+  // Reply even on a no-result: ambient channels used to stay silent here
+  // (suppressFallback), which left genuine questions hanging. The source's
+  // fallback ("No matching sessions found.") is short and the per-sender
+  // cooldown keeps it from becoming chatty.
+  return command.fallback(collected.results);
 }
 
 // ---- Ambient channels -------------------------------------------------------
@@ -3830,7 +3834,9 @@ const ambientInFlight = new Set(); // channelIndex currently generating a reply
 const ambientCooldown = new Map(); // sender -> last-answered timestamp (ms)
 
 // Shared yes/no router: does this free-text message look answerable by the
-// command's source? Tiny token budget; any error/timeout => stay silent.
+// command's source? Biased toward "yes" so borderline questions aren't dropped;
+// tiny token budget; fails OPEN so a classifier hiccup doesn't silence a valid
+// question (the answer step then replies, or surfaces the busy notice).
 async function ambientRelevanceClassifier(command, question) {
   const label = command.sources
     .map((id) => knowledgeSources[id]?.label)
@@ -3838,12 +3844,13 @@ async function ambientRelevanceClassifier(command, question) {
     .join(" / ") || command.name;
   try {
     const msg = await agentLlmChat([
-      { role: "system", content: `You are a routing filter. Reply with ONLY "yes" or "no". Answer "yes" if the user message is a question that could plausibly be answered using ${label}. Answer "no" for greetings, small talk, acknowledgements, or unrelated chatter.` },
+      { role: "system", content: `You are a lenient routing filter for a channel about ${label}. Reply with ONLY "yes" or "no". Answer "no" ONLY when the message is clearly a greeting, an acknowledgement, small talk, or plainly unrelated to ${label}. In every other case — and whenever you are unsure — answer "yes".` },
       { role: "user", content: question.slice(0, 300) },
     ], { maxTokens: 3, timeoutMs: LLM_TIMEOUT_MESH_MS });
-    return /\byes\b/i.test(String(msg.content || ""));
+    // Bias to "yes": only a clear "no" rejects; anything else (incl. odd output) passes.
+    return !/^\s*no\b/i.test(String(msg.content || ""));
   } catch {
-    return false;
+    return true; // fail open — don't drop a possibly-valid question on an LLM hiccup
   }
 }
 

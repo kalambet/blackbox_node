@@ -24,9 +24,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   an ambient channel question during an inference or internet outage previously produced
   dead air (and the explicit path misleadingly claimed "no matches"). The unreachable
   signal is detected even when the tool-mode error is masked by the pipeline fallback.
+- Ambient channel questions that find no match now get a short reply (the source's
+  "No matching sessions found." fallback) instead of silence, so a genuine question is
+  never left hanging; the per-sender cooldown keeps it from becoming chatty.
+- The ambient relevance classifier is now **lenient** (biased to "yes"; only a clear
+  "no" rejects) and **fails open** on any error, so borderline questions — and questions
+  hit by a transient classifier error — reach the answer step instead of being dropped.
 
 ### Changed
 
+- Broadened the ambient schedule-relevance heuristic so more real questions bypass the
+  yes/no classifier: fixed plurals (`workshops`, `panels`, `keynotes`, …) and added
+  `later, morning, afternoon, evening, lunch, panel, stage, hall, booth, exhibit,
+  opening, closing, break`. Fewer legitimate schedule questions get wrongly deemed
+  irrelevant.
 - Pretalx announcer batches all sessions that share a start time into a single
   message — `📅 10:00 · N talks · Room X — … · Room Y — … · +N more` — instead of
   one broadcast per talk. The message is bounded by a byte budget, so a crowded
