@@ -30,6 +30,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The ambient relevance classifier is now **lenient** (biased to "yes"; only a clear
   "no" rejects) and **fails open** on any error, so borderline questions — and questions
   hit by a transient classifier error — reach the answer step instead of being dropped.
+- The MeshCore `"<Name>: "` sender prefix is now stripped from **every** channel message
+  before processing (previously only when a `/command` followed), so the username no
+  longer leaks into the ambient relevance decision, search, or inference. Clock times,
+  URLs, and `key:value` tokens are preserved (whitespace after the colon is required);
+  message history still stores the raw text.
 
 ### Changed
 

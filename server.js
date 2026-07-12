@@ -3941,17 +3941,17 @@ function parseLocalSlashCommand(prompt) {
 }
 
 // MeshCore group-channel messages have no per-sender address field, so the
-// originating client prepends its node name inline as "Node Name: message".
-// That prefix pushes the "/" off the front and hides the command. Strip a
-// leading "Name: " prefix, but only when what follows actually begins with a
-// "/" - so normal chat (and colons inside real messages) is left untouched.
+// originating client prepends its node name inline as "Node Name: message". The
+// username is noise — for command parsing, and (on ambient channels) for the
+// relevance decision, search, and inference alike — so strip a leading
+// "<name>: " prefix from every channel message before it is processed. Require
+// whitespace after the colon so clock times ("12:30"), URLs ("https://…"), and
+// "key:value" tokens survive; only the first prefix is removed. The raw text is
+// still what gets stored in history — this only sanitises the processing input.
 function stripChannelSenderPrefix(text) {
   const s = String(text || "").trim();
-  if (s.startsWith("/")) {
-    return s;
-  }
-  const match = s.match(/^[^\n:]{1,40}:\s+(\/.*)$/s);
-  return match ? match[1] : s;
+  const match = s.match(/^[^\n:]{1,40}:\s+(\S.*)$/s);
+  return match ? match[1].trim() : s;
 }
 
 function findKnownNodeByQuery(query) {
